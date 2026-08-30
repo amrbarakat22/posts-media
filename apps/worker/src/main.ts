@@ -1,8 +1,17 @@
+import type {
+  INestApplicationContext,
+  NestApplicationOptions,
+} from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+
 import { WorkerModule } from './worker.module';
 
-async function bootstrap(): Promise<void> {
-  await NestFactory.createApplicationContext(WorkerModule);
+export async function bootstrap(
+  options?: NestApplicationOptions,
+): Promise<INestApplicationContext> {
+  return NestFactory.createApplicationContext(WorkerModule, options);
 }
 
-void bootstrap();
+if (require.main === module) {
+  void bootstrap();
+}

@@ -1,4 +1,7 @@
 import { Module } from '@nestjs/common';
+import { ConfigurationModule } from '@posts-media/configuration';
 
-@Module({})
+@Module({
+  imports: [ConfigurationModule],
+})
 export class ApiModule {}

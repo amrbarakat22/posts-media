@@ -4,3 +4,5 @@ export * from './environment.schema';
 export * from './processing.config';
 export * from './queue.config';
 export * from './storage.config';
+
+export const libraryName = 'configuration';

@@ -99,3 +99,65 @@ but this is not Node 24 runtime acceptance. Full `docker compose up` was not
 claimed as green: the current base commit intentionally has no Prisma schema or
 migrations yet, so the one-shot `migrate` service cannot complete until the
 database task supplies them.
+
+## Fix round 1: root startup wiring and barrel compatibility
+
+### Confirmed causes and correction
+
+The first implementation registered `ConfigurationModule` but neither root
+module imported it. Consequently the service was never instantiated, the API
+read raw `process.env.PORT`, and the worker had no configuration startup path.
+The configuration barrel also replaced the original `libraryName` export.
+
+`ApiModule` and `WorkerModule` now import `ConfigurationModule`. Both root
+bootstraps are exported for integration testing while retaining their
+`require.main === module` production entrypoints. API bootstrap gets
+`EnvironmentConfigurationService`, sets the validated API prefix, and listens
+on the validated typed port; it no longer reads `process.env` directly.
+`libraryName = 'configuration'` is restored alongside the new exports.
+
+### Fix-round RED evidence
+
+The tests were written before the wiring change:
+
+```text
+$ npm run test:unit -- --runTestsByPath apps/api/src/api.module.spec.ts
+FAIL rejects invalid environment: Received promise resolved instead of rejected
+FAIL typed API config: EnvironmentConfigurationService provider does not exist
+
+$ npm run test:worker -- --runTestsByPath apps/worker/src/worker.module.spec.ts
+FAIL rejects invalid environment: Received promise resolved instead of rejected
+FAIL typed worker config: EnvironmentConfigurationService provider does not exist
+
+$ npm run test:unit -- --runTestsByPath apps/api/src/main.spec.ts
+FAIL TS2459: Module './main' declares 'bootstrap' locally, but it is not exported
+```
+
+The worker bootstrap test produced the same `TS2459` failure. During the first
+GREEN attempt, Nest's default initialization behavior called `process.exit(1)`
+for the intentionally invalid environment. That is expected production fatal
+behavior; the test-only bootstrap options now use Nest's real
+`abortOnError: false` to observe the rejected startup promise without mocking
+the application or validation service.
+
+### Fix-round GREEN and regression evidence
+
+```text
+PASS npm run test:unit -- --runInBand
+     Test Suites: 5 passed, 5 total; Tests: 21 passed, 21 total
+PASS npm run test:worker
+     Test Suites: 2 passed, 2 total; Tests: 4 passed, 4 total
+PASS npm run build
+PASS npm run lint
+PASS npm run format:check
+PASS docker compose config --quiet
+PASS docker compose -f docker-compose.test.yml config --quiet
+PASS git diff --check
+```
+
+The new API and worker tests create real Nest testing modules and application
+contexts. They prove an unsupported `NODE_ENV` rejects module creation and
+bootstrap, valid environment values are injected through the real typed
+configuration service, and API binds an ephemeral validated configured port.
+The full unit run includes the neighboring Task 1 public-barrel smoke test
+(`libs/domain/src/index.spec.ts`), which now passes with the restored export.

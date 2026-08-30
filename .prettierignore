@@ -1,0 +1,6 @@
+.superpowers/
+coverage/
+dist/
+docs/superpowers/plans/
+node_modules/
+package-lock.json

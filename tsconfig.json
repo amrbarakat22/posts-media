@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "declaration": true,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "target": "ES2023",
+    "sourceMap": true,
+    "outDir": "./dist",
+    "baseUrl": "./",
+    "incremental": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "paths": {
+      "@posts-media/configuration": ["libs/configuration/src"],
+      "@posts-media/database": ["libs/database/src"],
+      "@posts-media/domain": ["libs/domain/src"],
+      "@posts-media/posts": ["libs/posts/src"],
+      "@posts-media/media": ["libs/media/src"],
+      "@posts-media/storage": ["libs/storage/src"],
+      "@posts-media/queues": ["libs/queues/src"],
+      "@posts-media/media-processing": ["libs/media-processing/src"],
+      "@posts-media/observability": ["libs/observability/src"],
+      "@posts-media/testing": ["libs/testing/src"]
+    }
+  }
+}

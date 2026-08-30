@@ -1,0 +1,254 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum MediaType {
+  IMAGE
+  AUDIO
+  VIDEO
+}
+
+enum ProcessingStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum ProcessingStep {
+  PENDING
+  CLAIMING
+  DOWNLOADING
+  VERIFYING
+  PROBING
+  PLANNING
+  PROCESSING
+  UPLOADING
+  FINALIZING
+  COMPLETED
+  FAILED
+}
+
+enum MediaVariantType {
+  OPTIMIZED_IMAGE
+  IMAGE_THUMBNAIL
+  NORMALIZED_AUDIO
+  VIDEO_360P
+  VIDEO_720P
+  VIDEO_1080P
+  VIDEO_SOURCE
+  VIDEO_THUMBNAIL
+}
+
+enum ProcessingAttemptStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+  INTERRUPTED
+}
+
+enum DispatchStatus {
+  PENDING
+  PUBLISHING
+  RETRY_WAIT
+  PUBLISHED
+  DEAD
+}
+
+enum DispatchReason {
+  INITIAL_UPLOAD
+  MANUAL_RETRY
+}
+
+enum IdempotencyState {
+  IN_PROGRESS
+  FINALIZED
+  RETRYABLE_FAILURE
+  EXPIRED
+}
+
+enum IdempotencyOperation {
+  CREATE_POST
+  ADD_POST_MEDIA
+  RETRY_MEDIA
+}
+
+enum WorkerInstanceStatus {
+  STARTING
+  READY
+  DEGRADED
+  SHUTTING_DOWN
+  STOPPED
+}
+
+model Post {
+  id        String    @id @default(uuid()) @db.Uuid
+  title     String    @db.VarChar(200)
+  content   String    @db.Text
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  media Media[]
+
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model Media {
+  id                String    @id @default(uuid()) @db.Uuid
+  postId            String    @db.Uuid
+  sortOrder         Int
+  mediaType         MediaType
+  originalFilename  String    @db.VarChar(255)
+  originalExtension String    @db.VarChar(16)
+  declaredMimeType  String    @db.VarChar(100)
+  detectedMimeType  String    @db.VarChar(100)
+  detectedFormat    String    @db.VarChar(32)
+  originalBucket    String    @db.VarChar(63)
+  originalObjectKey String    @db.VarChar(1024)
+  originalSize      BigInt
+  checksumSha256    String    @db.Char(64)
+
+  processingProfile        String           @default("balanced-v1") @db.VarChar(64)
+  processingGeneration     Int              @default(1)
+  processingStatus         ProcessingStatus @default(PENDING)
+  progress                 Int              @default(0)
+  currentStep              ProcessingStep   @default(PENDING)
+  processingStartedAt      DateTime?
+  processingCompletedAt    DateTime?
+  processingLeaseToken     String?          @db.Uuid
+  processingLeaseExpiresAt DateTime?
+  activeJobId              String?          @db.VarChar(200)
+  lastErrorCode            String?          @db.VarChar(64)
+  lastErrorMessage         String?          @db.VarChar(1000)
+  metadata                 Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  post       Post                 @relation(fields: [postId], references: [id])
+  variants   MediaVariant[]
+  attempts   ProcessingAttempt[]
+  dispatches ProcessingDispatch[]
+
+  @@unique([postId, sortOrder])
+  @@index([postId, processingStatus])
+  @@index([processingStatus])
+  @@index([mediaType])
+}
+
+model MediaVariant {
+  id                String           @id @default(uuid()) @db.Uuid
+  mediaId           String           @db.Uuid
+  processingProfile String           @db.VarChar(64)
+  variantType       MediaVariantType
+  bucket            String           @db.VarChar(63)
+  objectKey         String           @db.VarChar(1024)
+  mimeType          String           @db.VarChar(100)
+  format            String           @db.VarChar(32)
+  size              BigInt
+  checksumSha256    String           @db.Char(64)
+  width             Int?
+  height            Int?
+  bitrateKbps       Int?
+  resolutionLabel   String?          @db.VarChar(32)
+  createdAt         DateTime         @default(now())
+
+  media Media @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@unique([mediaId, processingProfile, variantType])
+  @@index([mediaId])
+}
+
+model ProcessingAttempt {
+  id                String                  @id @default(uuid()) @db.Uuid
+  mediaId           String                  @db.Uuid
+  generation        Int
+  bullAttemptNumber Int
+  jobId             String                  @db.VarChar(200)
+  processingProfile String                  @db.VarChar(64)
+  status            ProcessingAttemptStatus
+  workerInstanceId  String?                 @db.VarChar(200)
+  errorCode         String?                 @db.VarChar(64)
+  errorMessage      String?                 @db.VarChar(1000)
+  startedAt         DateTime                @default(now())
+  completedAt       DateTime?
+  durationMs        Int?
+
+  media Media @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@unique([mediaId, generation, bullAttemptNumber])
+  @@index([mediaId, generation])
+}
+
+model ProcessingDispatch {
+  id               String         @id @default(uuid()) @db.Uuid
+  mediaId          String         @db.Uuid
+  generation       Int
+  reason           DispatchReason
+  queueName        String         @db.VarChar(100)
+  jobName          String         @db.VarChar(100)
+  jobId            String         @unique @db.VarChar(200)
+  payloadVersion   Int            @default(1)
+  payload          Json
+  status           DispatchStatus @default(PENDING)
+  publishAttempts  Int            @default(0)
+  nextAttemptAt    DateTime?
+  leaseToken       String?        @db.Uuid
+  leaseExpiresAt   DateTime?
+  lastErrorCode    String?        @db.VarChar(64)
+  lastErrorMessage String?        @db.VarChar(1000)
+  publishedAt      DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  media Media @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@unique([mediaId, generation])
+  @@index([status, nextAttemptAt])
+  @@index([leaseExpiresAt])
+}
+
+model IdempotencyRequest {
+  id                 String               @id @default(uuid()) @db.Uuid
+  key                String               @unique @db.VarChar(128)
+  operation          IdempotencyOperation
+  method             String               @db.VarChar(10)
+  routeTemplate      String               @db.VarChar(200)
+  targetResourceId   String?              @db.Uuid
+  requestFingerprint String?              @db.Char(64)
+  state              IdempotencyState
+  responseStatus     Int?
+  responseBody       Json?
+  resourceIds        Json?
+  leaseToken         String?              @db.Uuid
+  leaseExpiresAt     DateTime?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  finalizedAt        DateTime?
+  expiresAt          DateTime
+
+  @@index([state])
+  @@index([expiresAt])
+}
+
+model WorkerInstance {
+  id               String               @id @db.VarChar(200)
+  instanceName     String               @db.VarChar(200)
+  version          String               @db.VarChar(50)
+  status           WorkerInstanceStatus
+  redisConnected   Boolean              @default(false)
+  storageConnected Boolean              @default(false)
+  dispatcherActive Boolean              @default(false)
+  consumersActive  Boolean              @default(false)
+  activeJobCount   Int                  @default(0)
+  metadata         Json?
+  startedAt        DateTime             @default(now())
+  lastHeartbeatAt  DateTime             @default(now())
+  shutdownAt       DateTime?
+}

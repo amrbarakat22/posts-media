@@ -12,12 +12,13 @@ const libraryAliases = {
   '^@posts-media/testing$': '<rootDir>/libs/testing/src/index.ts',
 };
 
-const project = (displayName, testMatch) => ({
+const project = (displayName, testMatch, testPathIgnorePatterns = []) => ({
   displayName,
   rootDir: '.',
   moduleFileExtensions: ['js', 'json', 'ts'],
   testEnvironment: 'node',
   testMatch,
+  testPathIgnorePatterns,
   transform: {
     '^.+\\.(t|j)s$': ['ts-jest', { tsconfig: 'tsconfig.json' }],
   },
@@ -26,11 +27,15 @@ const project = (displayName, testMatch) => ({
 
 module.exports = {
   projects: [
-    project('unit', [
-      '<rootDir>/libs/**/*.spec.ts',
-      '<rootDir>/apps/api/**/*.spec.ts',
+    project(
+      'unit',
+      ['<rootDir>/libs/**/*.spec.ts', '<rootDir>/apps/api/**/*.spec.ts'],
+      ['\\.integration\\.spec\\.ts$'],
+    ),
+    project('integration', [
+      '<rootDir>/libs/**/*.integration.spec.ts',
+      '<rootDir>/test/integration/**/*.spec.ts',
     ]),
-    project('integration', ['<rootDir>/test/integration/**/*.spec.ts']),
     project('e2e', ['<rootDir>/test/e2e/**/*.e2e-spec.ts']),
     project('worker', ['<rootDir>/apps/worker/**/*.spec.ts']),
   ],

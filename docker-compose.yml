@@ -1,0 +1,192 @@
+name: posts-media
+
+x-application-environment: &application-environment
+  NODE_ENV: ${NODE_ENV:-development}
+  PORT: ${PORT:-3000}
+  API_PREFIX: ${API_PREFIX:-api}
+  LOG_LEVEL: ${LOG_LEVEL:-debug}
+  DATABASE_URL: ${DATABASE_URL:-postgresql://posts:posts@postgres:5432/posts_media}
+  REDIS_HOST: ${REDIS_HOST:-redis}
+  REDIS_PORT: ${REDIS_PORT:-6379}
+  MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio}
+  MINIO_PORT: ${MINIO_PORT:-9000}
+  MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
+  MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+  MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin123}
+  MINIO_ORIGINALS_BUCKET: ${MINIO_ORIGINALS_BUCKET:-post-originals}
+  MINIO_PROCESSED_BUCKET: ${MINIO_PROCESSED_BUCKET:-post-processed}
+  MINIO_TEMP_BUCKET: ${MINIO_TEMP_BUCKET:-post-temporary}
+  MINIO_PRESIGNED_URL_TTL_SECONDS: ${MINIO_PRESIGNED_URL_TTL_SECONDS:-900}
+  UPLOAD_TEMP_ROOT: ${UPLOAD_TEMP_ROOT:-/tmp/posts-media-api}
+  UPLOAD_TEMP_MAX_AGE_MINUTES: ${UPLOAD_TEMP_MAX_AGE_MINUTES:-60}
+  MAX_FILES_PER_REQUEST: ${MAX_FILES_PER_REQUEST:-10}
+  MAX_TOTAL_UPLOAD_SIZE_MB: ${MAX_TOTAL_UPLOAD_SIZE_MB:-500}
+  MAX_IMAGE_SIZE_MB: ${MAX_IMAGE_SIZE_MB:-10}
+  MAX_AUDIO_SIZE_MB: ${MAX_AUDIO_SIZE_MB:-50}
+  MAX_VIDEO_SIZE_MB: ${MAX_VIDEO_SIZE_MB:-250}
+  MAX_IMAGE_PIXELS: ${MAX_IMAGE_PIXELS:-40000000}
+  MAX_AUDIO_DURATION_SECONDS: ${MAX_AUDIO_DURATION_SECONDS:-7200}
+  MAX_VIDEO_DURATION_SECONDS: ${MAX_VIDEO_DURATION_SECONDS:-1800}
+  MAX_VIDEO_WIDTH: ${MAX_VIDEO_WIDTH:-7680}
+  MAX_VIDEO_HEIGHT: ${MAX_VIDEO_HEIGHT:-4320}
+  MAX_MEDIA_STREAMS: ${MAX_MEDIA_STREAMS:-10}
+  MEDIA_PROBE_TIMEOUT_MS: ${MEDIA_PROBE_TIMEOUT_MS:-10000}
+  IDEMPOTENCY_TTL_HOURS: ${IDEMPOTENCY_TTL_HOURS:-24}
+  IDEMPOTENCY_LEASE_SECONDS: ${IDEMPOTENCY_LEASE_SECONDS:-900}
+  OUTBOX_POLL_INTERVAL_MS: ${OUTBOX_POLL_INTERVAL_MS:-1000}
+  OUTBOX_BATCH_SIZE: ${OUTBOX_BATCH_SIZE:-25}
+  OUTBOX_PUBLISH_CONCURRENCY: ${OUTBOX_PUBLISH_CONCURRENCY:-5}
+  OUTBOX_LEASE_SECONDS: ${OUTBOX_LEASE_SECONDS:-30}
+  OUTBOX_MAX_RETRY_DELAY_SECONDS: ${OUTBOX_MAX_RETRY_DELAY_SECONDS:-60}
+  OUTBOX_PUBLISHED_RETENTION_DAYS: ${OUTBOX_PUBLISHED_RETENTION_DAYS:-7}
+  IMAGE_WORKER_CONCURRENCY: ${IMAGE_WORKER_CONCURRENCY:-4}
+  AUDIO_WORKER_CONCURRENCY: ${AUDIO_WORKER_CONCURRENCY:-2}
+  VIDEO_WORKER_CONCURRENCY: ${VIDEO_WORKER_CONCURRENCY:-1}
+  MEDIA_JOB_ATTEMPTS: ${MEDIA_JOB_ATTEMPTS:-3}
+  MEDIA_JOB_BACKOFF_MS: ${MEDIA_JOB_BACKOFF_MS:-5000}
+  PROCESSING_LEASE_SECONDS: ${PROCESSING_LEASE_SECONDS:-60}
+  PROCESSING_LEASE_RENEW_SECONDS: ${PROCESSING_LEASE_RENEW_SECONDS:-20}
+  WORKER_TEMP_ROOT: ${WORKER_TEMP_ROOT:-/tmp/posts-media-worker}
+  WORKER_HEARTBEAT_INTERVAL_SECONDS: ${WORKER_HEARTBEAT_INTERVAL_SECONDS:-10}
+  WORKER_HEARTBEAT_STALE_SECONDS: ${WORKER_HEARTBEAT_STALE_SECONDS:-30}
+  IMAGE_PROCESSING_TIMEOUT_MS: ${IMAGE_PROCESSING_TIMEOUT_MS:-60000}
+  AUDIO_PROCESSING_TIMEOUT_MS: ${AUDIO_PROCESSING_TIMEOUT_MS:-600000}
+  VIDEO_PROCESSING_TIMEOUT_MS: ${VIDEO_PROCESSING_TIMEOUT_MS:-3600000}
+  IMAGE_WEBP_QUALITY: ${IMAGE_WEBP_QUALITY:-82}
+  IMAGE_MAX_WIDTH: ${IMAGE_MAX_WIDTH:-1920}
+  IMAGE_MAX_HEIGHT: ${IMAGE_MAX_HEIGHT:-1920}
+  IMAGE_THUMBNAIL_SIZE: ${IMAGE_THUMBNAIL_SIZE:-400}
+  AUDIO_MP3_BITRATE_KBPS: ${AUDIO_MP3_BITRATE_KBPS:-192}
+  AUDIO_MAX_SAMPLE_RATE: ${AUDIO_MAX_SAMPLE_RATE:-48000}
+  VIDEO_MAX_FPS: ${VIDEO_MAX_FPS:-30}
+  VIDEO_H264_CRF: ${VIDEO_H264_CRF:-23}
+  VIDEO_H264_PRESET: ${VIDEO_H264_PRESET:-veryfast}
+  VIDEO_AUDIO_BITRATE_KBPS: ${VIDEO_AUDIO_BITRATE_KBPS:-128}
+  PROCESSING_PROFILE: ${PROCESSING_PROFILE:-balanced-v1}
+
+services:
+  postgres:
+    image: postgres:18.0-bookworm
+    environment:
+      POSTGRES_DB: posts_media
+      POSTGRES_USER: posts
+      POSTGRES_PASSWORD: posts
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U posts -d posts_media']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  redis:
+    image: redis:8.6.0-bookworm
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin123}
+    ports:
+      - 127.0.0.1:9000:9000
+      - 127.0.0.1:9001:9001
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'curl --fail http://127.0.0.1:9000/minio/health/live']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    environment:
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio}
+      MINIO_PORT: ${MINIO_PORT:-9000}
+      MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin123}
+      MINIO_ORIGINALS_BUCKET: ${MINIO_ORIGINALS_BUCKET:-post-originals}
+      MINIO_PROCESSED_BUCKET: ${MINIO_PROCESSED_BUCKET:-post-processed}
+      MINIO_TEMP_BUCKET: ${MINIO_TEMP_BUCKET:-post-temporary}
+    volumes:
+      - ./docker/minio/initialize.sh:/usr/local/bin/initialize.sh:ro
+    entrypoint: ['/bin/sh', '/usr/local/bin/initialize.sh']
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: 'no'
+
+  migrate:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+      target: migrate
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://posts:posts@postgres:5432/posts_media}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+      target: runtime
+    environment: *application-environment
+    ports:
+      - 127.0.0.1:3000:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000').then(() => process.exit(0)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/worker/Dockerfile
+      target: runtime
+    environment: *application-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:

@@ -1,0 +1,63 @@
+name: posts-media-test
+
+services:
+  postgres:
+    image: postgres:18.0-bookworm
+    environment:
+      POSTGRES_DB: posts_media_test
+      POSTGRES_USER: posts
+      POSTGRES_PASSWORD: posts
+    volumes:
+      - postgres-test-data:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U posts -d posts_media_test']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  redis:
+    image: redis:8.6.0-bookworm
+    command: redis-server --appendonly no
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    volumes:
+      - minio-test-data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'curl --fail http://127.0.0.1:9000/minio/health/live']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    environment:
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_USE_SSL: false
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+      MINIO_ORIGINALS_BUCKET: post-originals
+      MINIO_PROCESSED_BUCKET: post-processed
+      MINIO_TEMP_BUCKET: post-temporary
+    volumes:
+      - ./docker/minio/initialize.sh:/usr/local/bin/initialize.sh:ro
+    entrypoint: ['/bin/sh', '/usr/local/bin/initialize.sh']
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: 'no'
+
+volumes:
+  postgres-test-data:
+  minio-test-data:

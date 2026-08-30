@@ -1,10 +1,37 @@
 import { createServer } from 'node:net';
+import { get as httpGet } from 'node:http';
 
 import {
   validEnvironment,
   withEnvironment,
 } from '../../../test/support/environment';
 import { bootstrap } from './main';
+
+const getJson = (
+  url: string,
+): Promise<{
+  status: number;
+  headers: Record<string, string | string[] | undefined>;
+  body: unknown;
+}> =>
+  new Promise((resolve, reject) => {
+    httpGet(url, (response) => {
+      const chunks: Buffer[] = [];
+      response.on('data', (chunk: Buffer) => chunks.push(chunk));
+      response.on('end', () => {
+        try {
+          resolve({
+            status: response.statusCode ?? 0,
+            headers: response.headers,
+            body: JSON.parse(Buffer.concat(chunks).toString('utf8')),
+          });
+        } catch (error) {
+          reject(error);
+        }
+      });
+      response.on('error', reject);
+    }).on('error', reject);
+  });
 
 const availablePort = async (): Promise<number> =>
   new Promise((resolve, reject) => {
@@ -39,6 +66,32 @@ describe('API bootstrap', () => {
         const application = await bootstrap({ logger: false });
         try {
           expect(await application.getUrl()).toBe(`http://[::1]:${port}`);
+        } finally {
+          await application.close();
+        }
+      },
+    );
+  });
+
+  it('assigns a request id and returns the stable error shape for an unknown route', async () => {
+    const port = await availablePort();
+    await withEnvironment(
+      validEnvironment({ PORT: String(port) }),
+      async () => {
+        const application = await bootstrap({ logger: false });
+        try {
+          const response = await getJson(
+            `http://127.0.0.1:${port}/api/does-not-exist`,
+          );
+
+          expect(response.status).toBe(404);
+          expect(response.headers['x-request-id']).toEqual(expect.any(String));
+          expect(response.body).toMatchObject({
+            statusCode: 404,
+            code: 'INTERNAL_ERROR',
+            requestId: response.headers['x-request-id'],
+          });
+          expect(response.body).not.toHaveProperty('stack');
         } finally {
           await application.close();
         }

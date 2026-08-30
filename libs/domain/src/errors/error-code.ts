@@ -4,8 +4,14 @@
  * one of these codes; the codes are also reused as `Media.lastErrorCode`
  * and `ProcessingAttempt.errorCode` values for processing failures that
  * never reach an HTTP response directly.
+ *
+ * `INTERNAL_ERROR` is not one of the plan's named codes — it is the global
+ * exception filter's (Task 6) fallback for exceptions that are neither a
+ * `DomainError` nor a recognized Multer limit error: a genuinely
+ * unexpected failure, not a business-rule rejection.
  */
 export const ERROR_CODES = [
+  'INTERNAL_ERROR',
   'IDEMPOTENCY_KEY_REQUIRED',
   'IDEMPOTENCY_KEY_INVALID',
   'IDEMPOTENCY_KEY_REUSED',

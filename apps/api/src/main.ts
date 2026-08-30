@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { EnvironmentConfigurationService } from '@posts-media/configuration';
 
 import { ApiModule } from './api.module';
+import { ApiExceptionFilter } from './http/filters/api-exception.filter';
 
 export async function bootstrap(
   options?: NestApplicationOptions,
@@ -12,6 +13,7 @@ export async function bootstrap(
     EnvironmentConfigurationService,
   ).values;
 
+  app.useGlobalFilters(new ApiExceptionFilter());
   app.setGlobalPrefix(applicationConfiguration.apiPrefix);
   await app.listen(applicationConfiguration.port);
   return app;

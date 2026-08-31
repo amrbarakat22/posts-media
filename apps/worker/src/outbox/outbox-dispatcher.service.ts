@@ -22,6 +22,7 @@ export class OutboxDispatcherService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   public onModuleInit(): void {
+    if (this.configuration.values.app.nodeEnvironment === 'test') return;
     const interval = this.configuration.values.outbox.pollIntervalMs;
     this.timer = setInterval(
       () => void this.runOnce().catch(() => undefined),

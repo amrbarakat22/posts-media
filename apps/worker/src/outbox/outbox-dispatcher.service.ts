@@ -7,6 +7,7 @@ import { EnvironmentConfigurationService } from '@posts-media/configuration';
 
 import { DispatchPublicationService } from './dispatch-publication.service';
 import { OutboxClaimRepository } from './outbox-claim.repository';
+import { OutboxCleanupService } from './outbox-cleanup.service';
 
 @Injectable()
 export class OutboxDispatcherService implements OnModuleInit, OnModuleDestroy {
@@ -16,12 +17,16 @@ export class OutboxDispatcherService implements OnModuleInit, OnModuleDestroy {
   public constructor(
     private readonly repository: OutboxClaimRepository,
     private readonly publication: DispatchPublicationService,
+    private readonly cleanup: OutboxCleanupService,
     private readonly configuration: EnvironmentConfigurationService,
   ) {}
 
   public onModuleInit(): void {
     const interval = this.configuration.values.outbox.pollIntervalMs;
-    this.timer = setInterval(() => void this.runOnce(), interval);
+    this.timer = setInterval(
+      () => void this.runOnce().catch(() => undefined),
+      interval,
+    );
     void this.runOnce().catch(() => undefined);
   }
 
@@ -46,6 +51,7 @@ export class OutboxDispatcherService implements OnModuleInit, OnModuleDestroy {
             .map((dispatch) => this.publication.publish(dispatch)),
         );
       }
+      await this.cleanup.runOnce();
     } finally {
       this.running = false;
     }

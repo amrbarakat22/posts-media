@@ -81,7 +81,7 @@ services:
       start_period: 10s
 
   redis:
-    image: redis:8.6.0-bookworm
+    image: redis:8.6.6-trixie
     command: redis-server --appendonly yes
     volumes:
       - redis-data:/data

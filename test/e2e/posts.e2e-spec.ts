@@ -1,9 +1,28 @@
+import { createServer } from 'node:net';
+
 import type { INestApplication } from '@nestjs/common';
 import { PrismaService } from '@posts-media/database';
 import * as request from 'supertest';
 
 import { bootstrap } from '../../apps/api/src/main';
 import { validEnvironment, withEnvironment } from '../support/environment';
+
+/** Resolves a free TCP port on 127.0.0.1 — `PORT=0` fails the env schema's `min: 1` port check. */
+const availablePort = async (): Promise<number> =>
+  new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      if (address === null || typeof address === 'string') {
+        reject(new Error('Unable to resolve an ephemeral port'));
+        return;
+      }
+      server.close((error) =>
+        error === undefined ? resolve(address.port) : reject(error),
+      );
+    });
+  });
 
 const databaseUrl =
   process.env.DATABASE_URL ??
@@ -46,10 +65,14 @@ describe('Posts E2E', () => {
   });
 
   beforeEach(async () => {
+    const port = await availablePort();
     await withEnvironment(
-      validEnvironment({ DATABASE_URL: databaseUrl, PORT: '0' }),
+      validEnvironment({ DATABASE_URL: databaseUrl, PORT: String(port) }),
       async () => {
-        app = await bootstrap({ logger: false });
+        app = await bootstrap({
+          logger: ['error', 'warn'],
+          abortOnError: false,
+        });
       },
     );
     await prisma.idempotencyRequest.deleteMany();
@@ -246,5 +269,79 @@ describe('Posts E2E', () => {
       (post) => post.title,
     );
     expect(titles).toEqual(['A post', 'B post']);
+  });
+
+  it('rejects a title over 200 characters', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/posts')
+      .send({ title: 'a'.repeat(201), content: 'x' });
+
+    expect(response.status).toBe(400);
+  });
+
+  it('rejects content over 10,000 characters', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/posts')
+      .send({ title: 'ok', content: 'a'.repeat(10001) });
+
+    expect(response.status).toBe(400);
+  });
+
+  it('rejects unknown body fields', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/posts')
+      .send({ title: 'ok', content: 'x', unexpected: true });
+
+    expect(response.status).toBe(400);
+  });
+
+  it('treats delete and restore as idempotent when repeated', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/api/posts')
+      .send({ title: 'Twice', content: 'x' });
+    const postId = created.body.id as string;
+
+    await request(app.getHttpServer())
+      .delete(`/api/posts/${postId}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .delete(`/api/posts/${postId}`)
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .post(`/api/posts/${postId}/restore`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .post(`/api/posts/${postId}/restore`)
+      .expect(200);
+  });
+
+  it('returns 404 when deleting or restoring an unknown post', async () => {
+    const missing = '00000000-0000-0000-0000-000000000000';
+    await request(app.getHttpServer())
+      .delete(`/api/posts/${missing}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(`/api/posts/${missing}/restore`)
+      .expect(404);
+  });
+
+  it('filters by createdFrom/createdTo date range', async () => {
+    await request(app.getHttpServer())
+      .post('/api/posts')
+      .send({ title: 'InRange', content: 'x' });
+
+    const from = new Date(Date.now() - 60_000).toISOString();
+    const to = new Date(Date.now() + 60_000).toISOString();
+    const inRange = await request(app.getHttpServer()).get(
+      `/api/posts?createdFrom=${from}&createdTo=${to}`,
+    );
+    expect(inRange.body.data.length).toBeGreaterThanOrEqual(1);
+
+    const farFuture = new Date(Date.now() + 3_600_000).toISOString();
+    const empty = await request(app.getHttpServer()).get(
+      `/api/posts?createdFrom=${farFuture}`,
+    );
+    expect(empty.body.data).toHaveLength(0);
   });
 });

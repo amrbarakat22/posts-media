@@ -5,13 +5,17 @@ import {
   RequestMethod,
 } from '@nestjs/common';
 import { ConfigurationModule } from '@posts-media/configuration';
+import { DatabaseModule } from '@posts-media/database';
+import { PostsModule } from '@posts-media/posts';
 
+import { PostsController } from './http/controllers/posts.controller';
 import { RequestIdMiddleware } from './http/middleware/request-id.middleware';
 import { RequestWorkspaceService } from './upload/request-workspace.service';
 import { UploadCleanupService } from './upload/upload-cleanup.service';
 
 @Module({
-  imports: [ConfigurationModule],
+  imports: [ConfigurationModule, DatabaseModule, PostsModule],
+  controllers: [PostsController],
   providers: [RequestWorkspaceService, UploadCleanupService],
 })
 export class ApiModule implements NestModule {

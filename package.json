@@ -6,6 +6,7 @@
     "node": ">=24 <25"
   },
   "scripts": {
+    "postinstall": "prisma generate",
     "build": "npm run build:api && npm run build:worker",
     "build:api": "nest build api",
     "build:worker": "nest build worker",

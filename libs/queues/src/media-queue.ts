@@ -9,6 +9,7 @@ export interface MediaQueue {
     payload: MediaJobPayloadV1,
     options: JobsOptions,
   ): Promise<void>;
+  ping(): Promise<boolean>;
 }
 
 export class BullMediaQueue implements MediaQueue, OnModuleDestroy {
@@ -22,6 +23,11 @@ export class BullMediaQueue implements MediaQueue, OnModuleDestroy {
     options: JobsOptions,
   ): Promise<void> {
     await this.queue.add(name, payload, options);
+  }
+
+  public async ping(): Promise<boolean> {
+    await this.queue.waitUntilReady();
+    return true;
   }
 
   public close(): Promise<void> {

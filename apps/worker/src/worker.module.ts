@@ -37,6 +37,7 @@ import { ProcessingWorkspaceService } from './processing/processing-workspace.se
 import { ProcessorOrchestratorService } from './processing/processor-orchestrator.service';
 import { VariantPublicationService } from './processing/variant-publication.service';
 import { MediaQueueConsumersService } from './consumers/media-queue-consumers.service';
+import { WorkerHeartbeatService } from './heartbeat/worker-heartbeat.service';
 
 const queueProvider = (token: symbol, mediaType: MediaType) => ({
   provide: token,
@@ -94,6 +95,7 @@ const queueProvider = (token: symbol, mediaType: MediaType) => ({
     ProcessorOrchestratorService,
     VariantPublicationService,
     MediaQueueConsumersService,
+    WorkerHeartbeatService,
   ],
 })
 export class WorkerModule {}

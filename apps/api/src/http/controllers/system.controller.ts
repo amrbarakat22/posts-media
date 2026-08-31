@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { EnvironmentConfigurationService } from '@posts-media/configuration';
 import { PrismaService } from '@posts-media/database';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   OBJECT_STORAGE_PORT,
   type ObjectStoragePort,
@@ -15,6 +16,7 @@ import {
 import { classifyWorkerHeartbeat } from '../../system/worker-health';
 
 @Controller('system')
+@ApiTags('system')
 export class SystemController {
   public constructor(
     private readonly prisma: PrismaService,
@@ -23,11 +25,13 @@ export class SystemController {
   ) {}
 
   @Get('live')
+  @ApiOperation({ summary: 'Process liveness probe' })
   public live() {
     return { status: 'LIVE' };
   }
 
   @Get('ready')
+  @ApiOperation({ summary: 'PostgreSQL and MinIO readiness probe' })
   public async ready() {
     try {
       await Promise.all([
@@ -47,6 +51,7 @@ export class SystemController {
   }
 
   @Get('diagnostics')
+  @ApiOperation({ summary: 'Outbox and worker diagnostics' })
   public async diagnostics() {
     const [pending, retryWait, dead] = await Promise.all([
       this.prisma.processingDispatch.count({ where: { status: 'PENDING' } }),

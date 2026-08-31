@@ -33,6 +33,21 @@ const getJson = (
     }).on('error', reject);
   });
 
+const getText = (url: string): Promise<{ status: number; body: string }> =>
+  new Promise((resolve, reject) => {
+    httpGet(url, (response) => {
+      const chunks: Buffer[] = [];
+      response.on('data', (chunk: Buffer) => chunks.push(chunk));
+      response.on('end', () =>
+        resolve({
+          status: response.statusCode ?? 0,
+          body: Buffer.concat(chunks).toString('utf8'),
+        }),
+      );
+      response.on('error', reject);
+    }).on('error', reject);
+  });
+
 const availablePort = async (): Promise<number> =>
   new Promise((resolve, reject) => {
     const server = createServer();
@@ -92,6 +107,48 @@ describe('API bootstrap', () => {
             requestId: response.headers['x-request-id'],
           });
           expect(response.body).not.toHaveProperty('stack');
+        } finally {
+          await application.close();
+        }
+      },
+    );
+  });
+
+  it('serves the static dashboard and documents every required route', async () => {
+    const port = await availablePort();
+    await withEnvironment(
+      validEnvironment({ PORT: String(port) }),
+      async () => {
+        const application = await bootstrap({ logger: false });
+        try {
+          const [html, css, javascript, documentResponse] = await Promise.all([
+            getText(`http://127.0.0.1:${port}/`),
+            getText(`http://127.0.0.1:${port}/css/styles.css`),
+            getText(`http://127.0.0.1:${port}/js/app.js`),
+            getJson(`http://127.0.0.1:${port}/api/docs-json`),
+          ]);
+          expect(html).toMatchObject({ status: 200 });
+          expect(html.body).toContain('Posts &amp; Media');
+          expect(css.status).toBe(200);
+          expect(javascript.status).toBe(200);
+          const paths = (
+            documentResponse.body as { paths: Record<string, unknown> }
+          ).paths;
+          expect(Object.keys(paths)).toEqual(
+            expect.arrayContaining([
+              '/api/posts',
+              '/api/posts/{postId}',
+              '/api/posts/{postId}/media',
+              '/api/posts/{postId}/restore',
+              '/api/media/{mediaId}',
+              '/api/media/{mediaId}/status',
+              '/api/media/{mediaId}/access',
+              '/api/media/{mediaId}/retry',
+              '/api/system/live',
+              '/api/system/ready',
+              '/api/system/diagnostics',
+            ]),
+          );
         } finally {
           await application.close();
         }

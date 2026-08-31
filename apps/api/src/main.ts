@@ -2,6 +2,7 @@ import type { INestApplication, NestApplicationOptions } from '@nestjs/common';
 import { ValidationPipe } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { NestFactory } from '@nestjs/core';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { EnvironmentConfigurationService } from '@posts-media/configuration';
 import { DomainError } from '@posts-media/domain';
 import type { ValidationError } from 'class-validator';
@@ -51,6 +52,21 @@ export async function bootstrap(
     }),
   );
   app.setGlobalPrefix(applicationConfiguration.apiPrefix);
+  const swaggerDocument = SwaggerModule.createDocument(
+    app,
+    new DocumentBuilder()
+      .setTitle('Posts & Media API')
+      .setDescription('Local Posts CRUD and mixed-media processing API')
+      .setVersion('1.0')
+      .addTag('posts')
+      .addTag('media')
+      .addTag('system')
+      .build(),
+  );
+  SwaggerModule.setup('docs', app, swaggerDocument, {
+    useGlobalPrefix: true,
+    jsonDocumentUrl: 'docs-json',
+  });
   await app.listen(applicationConfiguration.port);
   return app;
 }

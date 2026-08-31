@@ -16,6 +16,14 @@ import {
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import {
+  ApiBody,
+  ApiConsumes,
+  ApiHeader,
+  ApiOperation,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
+import {
   AddPostMediaService,
   CreatePostService,
   presentPost,
@@ -38,6 +46,7 @@ const MULTIPART_FIELD_DECORATOR_MAX_FILES = 50;
  * live in `PostsService`/`CreatePostService`.
  */
 @Controller('posts')
+@ApiTags('posts')
 export class PostsController {
   public constructor(
     private readonly posts: PostsService,
@@ -51,6 +60,20 @@ export class PostsController {
    * (Part I §2.4/§10.4). `FilesInterceptor` is a no-op for a JSON request.
    */
   @Post()
+  @ApiOperation({ summary: 'Create a post with optional initial media' })
+  @ApiConsumes('application/json', 'multipart/form-data')
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['title'],
+      properties: {
+        title: { type: 'string', maxLength: 200 },
+        content: { type: 'string', maxLength: 10000 },
+        media: { type: 'array', items: { type: 'string', format: 'binary' } },
+      },
+    },
+  })
   @UseInterceptors(
     FilesInterceptor('media', MULTIPART_FIELD_DECORATOR_MAX_FILES),
   )
@@ -75,6 +98,18 @@ export class PostsController {
    * back, and the whole request only fails when zero files are accepted.
    */
   @Post(':postId/media')
+  @ApiOperation({ summary: 'Add mixed media with partial-success semantics' })
+  @ApiConsumes('multipart/form-data')
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['media'],
+      properties: {
+        media: { type: 'array', items: { type: 'string', format: 'binary' } },
+      },
+    },
+  })
   @UseInterceptors(
     FilesInterceptor('media', MULTIPART_FIELD_DECORATOR_MAX_FILES),
   )
@@ -93,6 +128,21 @@ export class PostsController {
   }
 
   @Get()
+  @ApiOperation({ summary: 'List and filter posts' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'pageSize', required: false, type: Number })
+  @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiQuery({
+    name: 'mediaType',
+    required: false,
+    enum: ['IMAGE', 'AUDIO', 'VIDEO'],
+  })
+  @ApiQuery({
+    name: 'processingStatus',
+    required: false,
+    enum: ['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED'],
+  })
+  @ApiQuery({ name: 'includeDeleted', required: false, type: Boolean })
   public async list(@Query() query: ListPostsQueryDto) {
     const page = await this.posts.list(query);
     return {

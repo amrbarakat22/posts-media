@@ -1,9 +1,11 @@
 import type { INestApplication, NestApplicationOptions } from '@nestjs/common';
 import { ValidationPipe } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { NestFactory } from '@nestjs/core';
 import { EnvironmentConfigurationService } from '@posts-media/configuration';
 import { DomainError } from '@posts-media/domain';
 import type { ValidationError } from 'class-validator';
+import { join } from 'node:path';
 
 import { ApiModule } from './api.module';
 import { ApiExceptionFilter } from './http/filters/api-exception.filter';
@@ -26,6 +28,9 @@ export async function bootstrap(
   options?: NestApplicationOptions,
 ): Promise<INestApplication> {
   const app = await NestFactory.create(ApiModule, options);
+  (app as NestExpressApplication).useStaticAssets(
+    join(process.cwd(), 'apps/api/public'),
+  );
   const { app: applicationConfiguration } = app.get(
     EnvironmentConfigurationService,
   ).values;

@@ -11,6 +11,7 @@ import { MediaModule } from '@posts-media/media';
 
 import { PostsController } from './http/controllers/posts.controller';
 import { MediaController } from './http/controllers/media.controller';
+import { SystemController } from './http/controllers/system.controller';
 import { RequestIdMiddleware } from './http/middleware/request-id.middleware';
 import { UploadModule } from './upload/upload.module';
 
@@ -22,7 +23,7 @@ import { UploadModule } from './upload/upload.module';
     MediaModule,
     UploadModule,
   ],
-  controllers: [PostsController, MediaController],
+  controllers: [PostsController, MediaController, SystemController],
 })
 export class ApiModule implements NestModule {
   public configure(consumer: MiddlewareConsumer): void {

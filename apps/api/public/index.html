@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Posts &amp; Media</title>
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Posts &amp; Media</h1>
+      <p id="system-status">Checking system status…</p>
+      <section aria-labelledby="create-heading">
+        <h2 id="create-heading">Create post</h2>
+        <form id="create-form">
+          <label>Title <input name="title" maxlength="200" required /></label>
+          <label
+            >Content <textarea name="content" maxlength="10000"></textarea>
+          </label>
+          <label>Media <input name="media" type="file" multiple /></label>
+          <button type="submit">Create</button>
+        </form>
+      </section>
+      <section aria-labelledby="posts-heading">
+        <h2 id="posts-heading">Posts</h2>
+        <button id="refresh" type="button">Refresh</button>
+        <pre id="posts-output" aria-live="polite"></pre>
+      </section>
+    </main>
+    <script type="module" src="/js/app.js"></script>
+  </body>
+</html>

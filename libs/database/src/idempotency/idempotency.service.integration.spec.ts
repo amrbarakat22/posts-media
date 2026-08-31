@@ -40,6 +40,7 @@ describe('IdempotencyService (integration)', () => {
 
   afterEach(async () => {
     await prisma.idempotencyRequest.deleteMany();
+    await prisma.post.deleteMany();
   });
 
   it('acquires a fresh key and finalizes it as FINALIZED with the action outcome', async () => {
@@ -228,5 +229,54 @@ describe('IdempotencyService (integration)', () => {
         Promise.resolve(outcome(randomUUID())),
       ),
     ).rejects.toMatchObject({ code: 'IDEMPOTENCY_KEY_REUSED' });
+  });
+
+  describe('transactional coupling (Task 10 usage pattern)', () => {
+    it('finalize() inside a caller transaction commits together with the caller domain writes', async () => {
+      const ctx = context();
+      const fingerprint = 'k'.repeat(64);
+      const resourceId = randomUUID();
+
+      await service.acquireOrReplay(ctx, fingerprint);
+      await prisma.$transaction(async (tx) => {
+        await tx.post.create({
+          data: { id: resourceId, title: 'x', content: 'y' },
+        });
+        await service.finalize(ctx.key, outcome(resourceId), tx);
+      });
+
+      const stored = await prisma.idempotencyRequest.findUniqueOrThrow({
+        where: { key: ctx.key },
+      });
+      expect(stored.state).toBe('FINALIZED');
+      const post = await prisma.post.findUnique({ where: { id: resourceId } });
+      expect(post).not.toBeNull();
+
+      await prisma.post.deleteMany({ where: { id: resourceId } });
+    });
+
+    it('a caller transaction rollback leaves the key reclaimable, not FINALIZED', async () => {
+      const ctx = context();
+      const fingerprint = 'l'.repeat(64);
+      const resourceId = randomUUID();
+
+      await service.acquireOrReplay(ctx, fingerprint);
+      await expect(
+        prisma.$transaction(async (tx) => {
+          await tx.post.create({
+            data: { id: resourceId, title: 'x', content: 'y' },
+          });
+          await service.finalize(ctx.key, outcome(resourceId), tx);
+          throw new Error('simulated failure after domain writes');
+        }),
+      ).rejects.toThrow('simulated failure after domain writes');
+
+      const stored = await prisma.idempotencyRequest.findUniqueOrThrow({
+        where: { key: ctx.key },
+      });
+      expect(stored.state).toBe('IN_PROGRESS');
+      const post = await prisma.post.findUnique({ where: { id: resourceId } });
+      expect(post).toBeNull();
+    });
   });
 });

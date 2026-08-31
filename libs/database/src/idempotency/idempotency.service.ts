@@ -10,6 +10,9 @@ import { PrismaService } from '../prisma.service';
 /** Retry-After hint (seconds) returned with `IDEMPOTENCY_REQUEST_IN_PROGRESS` (Part I §2.11). */
 export const IDEMPOTENCY_IN_PROGRESS_RETRY_AFTER_SECONDS = 2;
 
+/** Either the long-lived `PrismaService` or an in-flight `Prisma.TransactionClient`. */
+export type DatabaseClient = PrismaService | Prisma.TransactionClient;
+
 export interface IdempotencyOperationContext {
   readonly key: string;
   readonly operation: IdempotencyOperation;
@@ -37,6 +40,10 @@ export interface IdempotentExecution {
   readonly replayed: boolean;
 }
 
+export type AcquireResult =
+  | { readonly kind: 'ACQUIRED' }
+  | { readonly kind: 'REPLAY'; readonly outcome: IdempotentOutcome };
+
 const keyReusedError = (): DomainError =>
   new DomainError(
     'IDEMPOTENCY_KEY_REUSED',
@@ -59,15 +66,20 @@ type Claim =
   | { readonly kind: 'IN_PROGRESS' };
 
 /**
- * The HTTP idempotency core (Part I §2.11/§11). Wraps a mutation's actual
- * work (`action`) so that repeating the same `Idempotency-Key` with the
- * same logical request replays the original stable result instead of
- * re-executing it, while a different request under the same key is
- * rejected. Callers (Task 10/11/17) are responsible for computing the
- * fingerprint and translating `action`'s own domain errors into a stable,
- * *finalizable* `IdempotentOutcome` — only genuinely unexpected failures
- * should be allowed to throw out of `action`, since those leave the key
- * retryable rather than finalized.
+ * The HTTP idempotency core (Part I §2.11/§11).
+ *
+ * Exposes two layers:
+ *
+ * - `acquireOrReplay` + `finalize` + `markRetryableFailure` are the
+ *   granular primitives. Callers that must create domain rows and
+ *   finalize the idempotency record in one atomic Postgres transaction
+ *   (Task 10's create-post-with-media, Task 11's add-media, Task 17's
+ *   retry) call `acquireOrReplay` *before* opening their transaction, then
+ *   pass their own `Prisma.TransactionClient` to `finalize` from *inside*
+ *   it — so a client can never retry into a duplicate resource because the
+ *   domain writes and the FINALIZED state commit or roll back together.
+ * - `executeIdempotent` is a convenience wrapper around those primitives
+ *   for simpler mutations whose own work has no transaction to join.
  */
 @Injectable()
 export class IdempotencyService {
@@ -84,16 +96,9 @@ export class IdempotencyService {
     fingerprint: string,
     action: IdempotentAction,
   ): Promise<IdempotentExecution> {
-    const claim = await this.acquire(context, fingerprint);
-
+    const claim = await this.acquireOrReplay(context, fingerprint);
     if (claim.kind === 'REPLAY') {
       return { outcome: claim.outcome, replayed: true };
-    }
-    if (claim.kind === 'CONFLICT') {
-      throw keyReusedError();
-    }
-    if (claim.kind === 'IN_PROGRESS') {
-      throw requestInProgressError();
     }
 
     try {
@@ -104,6 +109,76 @@ export class IdempotencyService {
       await this.markRetryableFailure(context.key);
       throw error;
     }
+  }
+
+  /**
+   * Acquires the lease for a fresh or reclaimable key, or returns the
+   * stored outcome to replay for a `FINALIZED` match. Throws
+   * `IDEMPOTENCY_KEY_REUSED` (409) for a fingerprint mismatch and
+   * `IDEMPOTENCY_REQUEST_IN_PROGRESS` (409, `Retry-After: 2`) for an
+   * active concurrent lease.
+   */
+  public async acquireOrReplay(
+    context: IdempotencyOperationContext,
+    fingerprint: string,
+  ): Promise<AcquireResult> {
+    const claim = await this.acquire(context, fingerprint);
+    if (claim.kind === 'CONFLICT') throw keyReusedError();
+    if (claim.kind === 'IN_PROGRESS') throw requestInProgressError();
+    return claim;
+  }
+
+  /**
+   * Marks the key `FINALIZED` with the given outcome. Pass the
+   * transaction client that also created the mutation's domain rows so
+   * both commit or roll back together; defaults to a standalone
+   * statement for validation-rejection outcomes that have no domain rows
+   * to couple with.
+   */
+  public async finalize(
+    key: string,
+    outcome: IdempotentOutcome,
+    client: DatabaseClient = this.prisma,
+  ): Promise<void> {
+    const updated = await client.idempotencyRequest.updateMany({
+      where: { key },
+      data: {
+        state: 'FINALIZED',
+        responseStatus: outcome.responseStatus,
+        responseBody: outcome.responseBody,
+        targetResourceId: outcome.targetResourceId ?? null,
+        resourceIds: outcome.resourceIds ?? Prisma.JsonNull,
+        finalizedAt: new Date(),
+        leaseToken: null,
+        leaseExpiresAt: null,
+      },
+    });
+    if (updated.count !== 1) {
+      this.logger.warn(
+        `Idempotency key ${key} could not be finalized (lease likely reclaimed by a later request).`,
+      );
+    }
+  }
+
+  public async markRetryableFailure(
+    key: string,
+    client: DatabaseClient = this.prisma,
+  ): Promise<void> {
+    await client.idempotencyRequest
+      .updateMany({
+        where: { key },
+        data: {
+          state: 'RETRYABLE_FAILURE',
+          leaseToken: null,
+          leaseExpiresAt: null,
+        },
+      })
+      .catch((cleanupError: unknown) => {
+        this.logger.error(
+          `Failed to mark idempotency key ${key} as RETRYABLE_FAILURE`,
+          cleanupError instanceof Error ? cleanupError.stack : undefined,
+        );
+      });
   }
 
   private async acquire(
@@ -207,48 +282,6 @@ export class IdempotencyService {
     return reclaimed.count === 1
       ? { kind: 'ACQUIRED' }
       : { kind: 'IN_PROGRESS' };
-  }
-
-  private async finalize(
-    key: string,
-    outcome: IdempotentOutcome,
-  ): Promise<void> {
-    const updated = await this.prisma.idempotencyRequest.updateMany({
-      where: { key },
-      data: {
-        state: 'FINALIZED',
-        responseStatus: outcome.responseStatus,
-        responseBody: outcome.responseBody,
-        targetResourceId: outcome.targetResourceId ?? null,
-        resourceIds: outcome.resourceIds ?? Prisma.JsonNull,
-        finalizedAt: new Date(),
-        leaseToken: null,
-        leaseExpiresAt: null,
-      },
-    });
-    if (updated.count !== 1) {
-      this.logger.warn(
-        `Idempotency key ${key} could not be finalized (lease likely reclaimed by a later request).`,
-      );
-    }
-  }
-
-  private async markRetryableFailure(key: string): Promise<void> {
-    await this.prisma.idempotencyRequest
-      .updateMany({
-        where: { key },
-        data: {
-          state: 'RETRYABLE_FAILURE',
-          leaseToken: null,
-          leaseExpiresAt: null,
-        },
-      })
-      .catch((cleanupError: unknown) => {
-        this.logger.error(
-          `Failed to mark idempotency key ${key} as RETRYABLE_FAILURE`,
-          cleanupError instanceof Error ? cleanupError.stack : undefined,
-        );
-      });
   }
 }
 

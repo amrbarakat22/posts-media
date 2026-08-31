@@ -9,7 +9,9 @@ WORKDIR /app
 FROM base AS dependencies
 
 COPY package.json package-lock.json ./
-RUN npm ci
+COPY prisma ./prisma
+COPY prisma.config.ts ./
+RUN DATABASE_URL=postgresql://build:build@localhost:5432/build npm ci
 
 FROM dependencies AS build
 
@@ -21,8 +23,10 @@ FROM base AS runtime
 ENV NODE_ENV=production
 
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+COPY prisma ./prisma
+COPY prisma.config.ts ./
+RUN DATABASE_URL=postgresql://build:build@localhost:5432/build npm ci --omit=dev
 COPY --from=build /app/dist ./dist
 
 ENTRYPOINT ["dumb-init", "--"]
-CMD ["node", "dist/apps/worker/main.js"]
+CMD ["node", "dist/apps/worker/apps/worker/src/main.js"]

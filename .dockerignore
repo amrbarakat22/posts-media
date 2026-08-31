@@ -1,0 +1,8 @@
+.git
+.env
+.superpowers
+coverage
+dist
+node_modules
+tmp
+*.log

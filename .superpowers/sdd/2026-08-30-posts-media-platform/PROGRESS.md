@@ -15,16 +15,16 @@ Plan: `docs/superpowers/plans/2026-08-30-posts-media-platform.md`
 | 9 | HTTP idempotency core | DONE (verified) | `7a063bc` |
 | 10 | Atomic create post with initial media | DONE (verified) | `502107e` |
 | 11 | Partial add-media flow | DONE (verified) | `a4f7224` |
-| 12 | Transactional outbox dispatcher + BullMQ topology | IN PROGRESS (implementation committed; recovery matrix pending) | `5057b2e`, `7dcdf34` |
-| 13 | Worker processing claim, lease renewal, attempts, workspace | TODO | - |
-| 14 | Image processing and variant publication | TODO | - |
-| 15 | Audio processing | TODO | - |
-| 16 | Video rendition planning, transcoding, thumbnail | TODO | - |
-| 17 | Media read/status/access and manual retry | TODO | - |
-| 18 | Worker heartbeat, API health, diagnostics | TODO | - |
-| 19 | Swagger and static testing UI | TODO | - |
-| 20 | Full failure-recovery and idempotency test matrix | TODO | - |
-| 21 | README, smoke test, final verification | TODO | - |
+| 12 | Transactional outbox dispatcher + BullMQ topology | DONE (including real Redis outage/recovery) | `5057b2e`, `7dcdf34` |
+| 13 | Worker processing claim, lease renewal, attempts, workspace | DONE (focused integration verified) | `0913917`, `9636bdf` |
+| 14 | Image processing and variant publication | DONE (real Compose smoke verified) | `94f3acd`, `0ab163c`, `941ec3e` |
+| 15 | Audio processing | PARTIAL (real WAV-to-MP3 + Compose smoke; broader source matrix pending) | `da85e95`, `e9259a9`, `941ec3e` |
+| 16 | Video rendition planning, transcoding, thumbnail | PARTIAL (real 360p Compose smoke; full resolution/orientation matrix pending) | `da85e95`, `e9259a9`, `941ec3e` |
+| 17 | Media read/status/access and manual retry | PARTIAL (read/access smoke verified; complete retry E2E matrix pending) | `40f0616` |
+| 18 | Worker heartbeat, API health, diagnostics | DONE | `6f99423` |
+| 19 | Swagger and static testing UI | DONE | `2481280`, `0b32b48` |
+| 20 | Full failure-recovery and idempotency test matrix | IN PROGRESS (Redis recovery and canonical suites verified; remaining injected failures pending) | - |
+| 21 | README, smoke test, final verification | IN PROGRESS (clean Compose + mixed smoke pass; final matrix/audit pending) | `94f5b50` |
 
 ## Reconciliation note (Task 8)
 

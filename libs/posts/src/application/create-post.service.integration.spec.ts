@@ -166,6 +166,13 @@ describe('CreatePostService compensation (integration)', () => {
     await prisma.onModuleDestroy();
   });
 
+  beforeEach(async () => {
+    await prisma.idempotencyRequest.deleteMany();
+    await prisma.processingDispatch.deleteMany();
+    await prisma.media.deleteMany();
+    await prisma.post.deleteMany();
+  });
+
   afterEach(async () => {
     await prisma.idempotencyRequest.deleteMany();
     await prisma.processingDispatch.deleteMany();

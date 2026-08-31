@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { deflateSync } from 'node:zlib';
 
 import { ImageInspectorService } from './image-inspector.service';
 
@@ -48,6 +49,20 @@ describe('ImageInspectorService with real Sharp decoding', () => {
       join(directory, 'corrupt.jpg'),
       Buffer.from([0xff, 0xd8, 0xff, 0x00, 0x01]),
     );
+    const ihdr = Buffer.alloc(13);
+    ihdr.writeUInt32BE(100_000, 0);
+    ihdr.writeUInt32BE(100_000, 4);
+    ihdr[8] = 8;
+    ihdr[9] = 2;
+    await writeFile(
+      join(directory, 'truncated-pixel-bomb.png'),
+      Buffer.concat([
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+        pngChunk('IHDR', ihdr),
+        pngChunk('IDAT', deflateSync(Buffer.alloc(300_001))),
+        pngChunk('IEND', Buffer.alloc(0)),
+      ]),
+    );
   });
 
   afterAll(async () => {
@@ -90,6 +105,17 @@ describe('ImageInspectorService with real Sharp decoding', () => {
     });
   });
 
+  it('rejects a compressed pixel bomb from metadata before attempting its corrupt body decode', async () => {
+    await expect(
+      new ImageInspectorService(40_000_000).inspect(
+        join(directory, 'truncated-pixel-bomb.png'),
+      ),
+    ).rejects.toMatchObject({
+      code: 'IMAGE_PIXEL_LIMIT_EXCEEDED',
+      details: { width: 100_000, height: 100_000, maxPixels: 40_000_000 },
+    });
+  });
+
   it('maps a valid-looking but truncated image to CORRUPTED_FILE safely', async () => {
     await expect(
       new ImageInspectorService(100).inspect(join(directory, 'corrupt.jpg')),
@@ -99,3 +125,23 @@ describe('ImageInspectorService with real Sharp decoding', () => {
     });
   });
 });
+
+const pngChunk = (type: string, data: Buffer): Buffer => {
+  const typeBytes = Buffer.from(type, 'ascii');
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.length);
+  const checksum = Buffer.alloc(4);
+  checksum.writeUInt32BE(crc32(Buffer.concat([typeBytes, data])));
+  return Buffer.concat([length, typeBytes, data, checksum]);
+};
+
+const crc32 = (data: Buffer): number => {
+  let checksum = 0xffffffff;
+  for (const byte of data) {
+    checksum ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      checksum = (checksum >>> 1) ^ ((checksum & 1) === 1 ? 0xedb88320 : 0);
+    }
+  }
+  return (checksum ^ 0xffffffff) >>> 0;
+};

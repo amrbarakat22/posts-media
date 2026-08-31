@@ -11,7 +11,6 @@ interface SharpMetadata {
 
 interface SharpInstance {
   metadata(): Promise<SharpMetadata>;
-  clone(): SharpInstance;
   raw(): SharpInstance;
   toBuffer(): Promise<Buffer>;
 }
@@ -21,7 +20,7 @@ type SharpFactory = (
   options: {
     readonly animated: boolean;
     readonly failOn: 'error';
-    readonly limitInputPixels: false;
+    readonly limitInputPixels: number | false;
   },
 ) => SharpInstance;
 
@@ -47,10 +46,7 @@ const mimeByFormat = {
 export class ImageInspectorService {
   public constructor(private readonly maxPixels: number) {}
 
-  public async inspect(
-    temporaryPath: string,
-    enforceSafetyLimits = true,
-  ): Promise<ImageInspection> {
+  public async inspect(temporaryPath: string): Promise<ImageInspection> {
     try {
       const image = sharp(temporaryPath, {
         animated: true,
@@ -71,8 +67,6 @@ export class ImageInspectorService {
       ) {
         throw corruptedFile();
       }
-      // Metadata alone is not acceptance: force libvips to decode the body.
-      await image.clone().raw().toBuffer();
       const inspection: ImageInspection = {
         format,
         mimeType: mimeByFormat[format],
@@ -80,7 +74,16 @@ export class ImageInspectorService {
         height: pageHeight,
         pages,
       };
-      if (enforceSafetyLimits) this.assertSafety(inspection);
+      // Reject bombs and multi-frame input before a body decode can allocate
+      // pixels, then retain Sharp's own limit as defense in depth.
+      this.assertSafety(inspection);
+      await sharp(temporaryPath, {
+        animated: false,
+        failOn: 'error',
+        limitInputPixels: this.maxPixels,
+      })
+        .raw()
+        .toBuffer();
       return inspection;
     } catch (error) {
       if (error instanceof DomainError) {
@@ -90,7 +93,7 @@ export class ImageInspectorService {
     }
   }
 
-  public assertSafety(inspection: ImageInspection): void {
+  private assertSafety(inspection: ImageInspection): void {
     if (inspection.pages > 1) {
       throw new DomainError(
         'ANIMATED_IMAGE_NOT_SUPPORTED',

@@ -1,5 +1,7 @@
 import { DomainError } from '@posts-media/domain';
 
+import type { ExtensionPolicy } from './extension-policy';
+
 const aliases: Readonly<Record<string, string>> = Object.freeze({
   'application/octet-stream': 'application/octet-stream',
   'application/ogg': 'audio/ogg',
@@ -44,3 +46,10 @@ export const canonicalizeDeclaredMimeType = (declared: string): string => {
   }
   return canonical;
 };
+
+export const isDeclaredMimeCompatible = (
+  policy: ExtensionPolicy,
+  canonicalDeclaredMimeType: string,
+): boolean =>
+  canonicalDeclaredMimeType === 'application/octet-stream' ||
+  canonicalDeclaredMimeType === policy.detectedMimeType;

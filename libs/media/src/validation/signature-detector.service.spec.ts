@@ -50,6 +50,9 @@ describe('SignatureDetectorService', () => {
       Buffer.from([0, 0, 0, 24]),
       Buffer.from('ftyp'),
       Buffer.from(brand),
+      Buffer.alloc(4),
+      Buffer.from(brand),
+      Buffer.from('isom'),
     ]);
     expect(detectHeaderSignature(bytes)).toMatchObject({
       containerFamily: 'iso-bmff',
@@ -61,11 +64,14 @@ describe('SignatureDetectorService', () => {
     const bytes = Buffer.concat([
       Buffer.from([0, 0, 0, 24]),
       Buffer.from('ftypisom'),
+      Buffer.alloc(4),
+      Buffer.from('isommp42'),
     ]);
     expect(detectHeaderSignature(bytes)).toEqual({
       format: 'iso-bmff',
       mimeType: 'application/mp4',
       containerFamily: 'iso-bmff',
+      containerEvidence: 'shared-iso',
     });
   });
 
@@ -73,13 +79,40 @@ describe('SignatureDetectorService', () => {
     ['webm', 'webm'],
     ['matroska', 'mkv'],
   ])('refines EBML DocType %s as %s', (docType, variant) => {
+    const docTypeBytes = Buffer.from(docType);
+    const payload = Buffer.concat([
+      Buffer.from([0x42, 0x82, 0x80 | docTypeBytes.length]),
+      docTypeBytes,
+    ]);
     const bytes = Buffer.concat([
-      Buffer.from([0x1a, 0x45, 0xdf, 0xa3]),
-      Buffer.from(`header-${docType}`),
+      Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0x80 | payload.length]),
+      payload,
     ]);
     expect(detectHeaderSignature(bytes)).toMatchObject({
       containerFamily: 'ebml',
       containerVariant: variant,
+    });
+  });
+
+  it('parses EBML elements and ignores a misleading string before a DocType beyond byte 64', () => {
+    const misleadingVoid = Buffer.concat([
+      Buffer.from([0xec, 0xc6]),
+      Buffer.from('webm'),
+      Buffer.alloc(66),
+    ]);
+    const docType = Buffer.concat([
+      Buffer.from([0x42, 0x82, 0x88]),
+      Buffer.from('matroska'),
+    ]);
+    const payload = Buffer.concat([misleadingVoid, docType]);
+    const header = Buffer.concat([
+      Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0x80 | payload.length]),
+      payload,
+    ]);
+
+    expect(detectHeaderSignature(header)).toMatchObject({
+      containerFamily: 'ebml',
+      containerVariant: 'mkv',
     });
   });
 
@@ -117,6 +150,35 @@ describe('SignatureDetectorService', () => {
       await expect(
         new SignatureDetectorService().detect(path),
       ).resolves.toMatchObject({ format: 'jpeg' });
+    });
+
+    it('reads a bounded extended header to locate a structured EBML DocType beyond byte 64', async () => {
+      const path = join(directory, 'extended-ebml.bin');
+      const misleadingVoid = Buffer.concat([
+        Buffer.from([0xec, 0xc6]),
+        Buffer.from('webm'),
+        Buffer.alloc(66),
+      ]);
+      const docType = Buffer.concat([
+        Buffer.from([0x42, 0x82, 0x88]),
+        Buffer.from('matroska'),
+      ]);
+      const payload = Buffer.concat([misleadingVoid, docType]);
+      await writeFile(
+        path,
+        Buffer.concat([
+          Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0x80 | payload.length]),
+          payload,
+          Buffer.alloc(1024 * 1024),
+        ]),
+      );
+
+      await expect(
+        new SignatureDetectorService().detect(path),
+      ).resolves.toMatchObject({
+        containerFamily: 'ebml',
+        containerVariant: 'mkv',
+      });
     });
 
     it('rejects an empty file with the stable code', async () => {

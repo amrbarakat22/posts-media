@@ -51,6 +51,14 @@ describe('AvInspectorService with real FFprobe parsing', () => {
     ffmpeg(directory, [...sine, '-c:a', 'flac', 'valid.flac']);
     ffmpeg(directory, [...sine, '-c:a', 'libvorbis', 'valid.ogg']);
     ffmpeg(directory, [...sine, '-c:a', 'alac', 'unsupported-audio.m4a']);
+    ffmpeg(directory, [
+      ...sine,
+      '-c:a',
+      'libopus',
+      '-f',
+      'webm',
+      'audio-only.webm',
+    ]);
 
     const video = ['-f', 'lavfi', '-i', 'color=c=blue:s=16x12:r=10:d=1.2'];
     ffmpeg(directory, [
@@ -125,6 +133,24 @@ describe('AvInspectorService with real FFprobe parsing', () => {
   });
 
   it.each([
+    ['two-streams.mp4', MediaType.AUDIO, 'm4a'],
+    ['valid.m4a', MediaType.VIDEO, 'mp4'],
+    ['valid.m4a', MediaType.VIDEO, 'mov'],
+    ['valid.webm', MediaType.VIDEO, 'mkv'],
+    ['valid.mkv', MediaType.VIDEO, 'webm'],
+  ] as const)(
+    'rejects real container subtype swap %s submitted as %s',
+    async (name, mediaType, expectedFormat) => {
+      await expect(
+        new AvInspectorService(limits()).inspect(join(directory, name), {
+          mediaType,
+          expectedFormat,
+        }),
+      ).rejects.toMatchObject({ code: 'FILE_SIGNATURE_MISMATCH' });
+    },
+  );
+
+  it.each([
     ['truncated.mp3', MediaType.AUDIO, 'mp3', 'CORRUPTED_FILE'],
     [
       'unsupported-audio.m4a',
@@ -138,7 +164,7 @@ describe('AvInspectorService with real FFprobe parsing', () => {
       'mp4',
       'UNSUPPORTED_VIDEO_CODEC',
     ],
-    ['valid.m4a', MediaType.VIDEO, 'mp4', 'MEDIA_STREAM_NOT_FOUND'],
+    ['audio-only.webm', MediaType.VIDEO, 'webm', 'MEDIA_STREAM_NOT_FOUND'],
   ] as const)(
     'rejects invalid real fixture %s with %s',
     async (name, mediaType, format, code) => {

@@ -8,9 +8,10 @@ export interface SignatureDetection {
   readonly mediaType?: MediaType;
   readonly containerFamily?: 'iso-bmff' | 'ebml';
   readonly containerVariant?: 'mp4' | 'mov' | 'm4a' | 'webm' | 'mkv';
+  readonly containerEvidence?: 'shared-iso';
 }
 
-const MAX_HEADER_BYTES = 64;
+const MAX_HEADER_BYTES = 4096;
 
 const known = (
   format: string,
@@ -24,6 +25,101 @@ const startsWith = (header: Buffer, bytes: readonly number[]): boolean =>
 const asciiAt = (header: Buffer, offset: number, value: string): boolean =>
   header.length >= offset + value.length &&
   header.subarray(offset, offset + value.length).toString('ascii') === value;
+
+interface VariableInteger {
+  readonly length: number;
+  readonly value: number;
+}
+
+const parseVariableInteger = (
+  buffer: Buffer,
+  offset: number,
+  retainMarker: boolean,
+): VariableInteger | undefined => {
+  const first = buffer[offset];
+  if (first === undefined || first === 0) return undefined;
+  let length = 1;
+  let marker = 0x80;
+  while ((first & marker) === 0) {
+    length += 1;
+    marker >>= 1;
+  }
+  if (length > 8 || offset + length > buffer.length) return undefined;
+
+  let value = retainMarker ? first : first & (marker - 1);
+  for (let index = 1; index < length; index += 1) {
+    value = value * 256 + (buffer[offset + index] ?? 0);
+  }
+  if (!Number.isSafeInteger(value)) return undefined;
+  return { length, value };
+};
+
+const parseEbmlDocType = (header: Buffer): 'webm' | 'mkv' | undefined => {
+  const headerSize = parseVariableInteger(header, 4, false);
+  if (headerSize === undefined) return undefined;
+  let cursor = 4 + headerSize.length;
+  const end = cursor + headerSize.value;
+  if (end > header.length) return undefined;
+
+  while (cursor < end) {
+    const id = parseVariableInteger(header, cursor, true);
+    if (id === undefined) return undefined;
+    cursor += id.length;
+    const size = parseVariableInteger(header, cursor, false);
+    if (size === undefined) return undefined;
+    cursor += size.length;
+    const dataEnd = cursor + size.value;
+    if (dataEnd > end) return undefined;
+
+    if (id.value === 0x4282) {
+      const docType = header
+        .subarray(cursor, dataEnd)
+        .toString('ascii')
+        .toLowerCase();
+      return docType === 'webm'
+        ? 'webm'
+        : docType === 'matroska'
+          ? 'mkv'
+          : undefined;
+    }
+    cursor = dataEnd;
+  }
+  return undefined;
+};
+
+interface IsoEvidence {
+  readonly variant?: 'mov' | 'm4a';
+  readonly shared: boolean;
+}
+
+const parseIsoEvidence = (header: Buffer): IsoEvidence | undefined => {
+  if (header.length < 16 || !asciiAt(header, 4, 'ftyp')) return undefined;
+  const boxSize = header.readUInt32BE(0);
+  if (boxSize < 16 || boxSize > header.length || boxSize % 4 !== 0) {
+    return undefined;
+  }
+  const brands: string[] = [header.subarray(8, 12).toString('ascii')];
+  for (let offset = 16; offset + 4 <= boxSize; offset += 4) {
+    brands.push(header.subarray(offset, offset + 4).toString('ascii'));
+  }
+  if (brands.includes('qt  ')) return { variant: 'mov', shared: false };
+  if (brands.some((brand) => /^M4[ABP] $/u.test(brand))) {
+    return { variant: 'm4a', shared: false };
+  }
+  const sharedBrands = new Set([
+    'avc1',
+    'dash',
+    'iso2',
+    'iso5',
+    'iso6',
+    'isom',
+    'mp41',
+    'mp42',
+  ]);
+  return brands.some((brand) => sharedBrands.has(brand))
+    ? { shared: true }
+    : undefined;
+};
 
 const isMpegAudioFrame = (header: Buffer): boolean => {
   if (header.length < 4 || header[0] !== 0xff) {
@@ -79,29 +175,26 @@ export const detectHeaderSignature = (header: Buffer): SignatureDetection => {
     return known('ogg', 'audio/ogg', MediaType.AUDIO);
   }
   if (asciiAt(header, 4, 'ftyp')) {
-    const majorBrand = header.subarray(8, 12).toString('ascii');
+    const evidence = parseIsoEvidence(header);
     return {
       format: 'iso-bmff',
       mimeType: 'application/mp4',
       containerFamily: 'iso-bmff',
-      ...(majorBrand === 'qt  '
-        ? { containerVariant: 'mov' as const }
-        : majorBrand === 'M4A '
-          ? { containerVariant: 'm4a' as const }
-          : {}),
+      ...(evidence?.variant === undefined
+        ? {}
+        : { containerVariant: evidence.variant }),
+      ...(evidence?.shared === true
+        ? { containerEvidence: 'shared-iso' as const }
+        : {}),
     };
   }
   if (startsWith(header, [0x1a, 0x45, 0xdf, 0xa3])) {
-    const headerText = header.toString('ascii').toLowerCase();
+    const containerVariant = parseEbmlDocType(header);
     return {
       format: 'ebml',
       mimeType: 'application/x-ebml',
       containerFamily: 'ebml',
-      ...(headerText.includes('webm')
-        ? { containerVariant: 'webm' as const }
-        : headerText.includes('matroska')
-          ? { containerVariant: 'mkv' as const }
-          : {}),
+      ...(containerVariant === undefined ? {} : { containerVariant }),
     };
   }
   throw new DomainError(

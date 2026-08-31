@@ -7,17 +7,32 @@ import {
 
 describe('extension policy', () => {
   it.each([
-    ['photo.jpg', 'jpg', MediaType.IMAGE],
-    ['photo.JPEG', 'jpeg', MediaType.IMAGE],
-    ['clip.PNG', 'png', MediaType.IMAGE],
-    ['sound.OGA', 'oga', MediaType.AUDIO],
-    ['movie.MKV', 'mkv', MediaType.VIDEO],
-  ])('accepts %s case-insensitively', (filename, extension, mediaType) => {
-    expect(resolveExtensionPolicy(filename)).toMatchObject({
-      extension,
-      mediaType,
-    });
-  });
+    ['FILE.JPG', 'jpg', 'jpeg', MediaType.IMAGE, 'image/jpeg'],
+    ['FILE.JPEG', 'jpeg', 'jpeg', MediaType.IMAGE, 'image/jpeg'],
+    ['FILE.PNG', 'png', 'png', MediaType.IMAGE, 'image/png'],
+    ['FILE.WEBP', 'webp', 'webp', MediaType.IMAGE, 'image/webp'],
+    ['FILE.MP3', 'mp3', 'mp3', MediaType.AUDIO, 'audio/mpeg'],
+    ['FILE.WAV', 'wav', 'wav', MediaType.AUDIO, 'audio/wav'],
+    ['FILE.M4A', 'm4a', 'm4a', MediaType.AUDIO, 'audio/mp4'],
+    ['FILE.AAC', 'aac', 'aac', MediaType.AUDIO, 'audio/aac'],
+    ['FILE.FLAC', 'flac', 'flac', MediaType.AUDIO, 'audio/flac'],
+    ['FILE.OGG', 'ogg', 'ogg', MediaType.AUDIO, 'audio/ogg'],
+    ['FILE.OGA', 'oga', 'ogg', MediaType.AUDIO, 'audio/ogg'],
+    ['FILE.MP4', 'mp4', 'mp4', MediaType.VIDEO, 'video/mp4'],
+    ['FILE.MOV', 'mov', 'mov', MediaType.VIDEO, 'video/quicktime'],
+    ['FILE.WEBM', 'webm', 'webm', MediaType.VIDEO, 'video/webm'],
+    ['FILE.MKV', 'mkv', 'mkv', MediaType.VIDEO, 'video/x-matroska'],
+  ])(
+    'accepts %s case-insensitively',
+    (filename, extension, format, mediaType, mimeType) => {
+      expect(resolveExtensionPolicy(filename)).toMatchObject({
+        extension,
+        format,
+        mediaType,
+        detectedMimeType: mimeType,
+      });
+    },
+  );
 
   it('normalizes a display filename without treating it as a path', () => {
     expect(normalizeOriginalFilename('  family\u0000  photo.jpg  ')).toBe(

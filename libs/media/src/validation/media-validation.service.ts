@@ -16,7 +16,10 @@ import {
   type ExtensionPolicy,
 } from './extension-policy';
 import { ImageInspectorService } from './image-inspector.service';
-import { canonicalizeDeclaredMimeType } from './mime-policy';
+import {
+  canonicalizeDeclaredMimeType,
+  isDeclaredMimeCompatible,
+} from './mime-policy';
 import {
   SignatureDetectorService,
   type SignatureDetection,
@@ -75,18 +78,23 @@ export class MediaValidationService {
     files: readonly Express.Multer.File[],
   ): Promise<MediaValidationResult> {
     const preflight = await this.preflight(files);
-    const outcomes = await Promise.all(
-      files.map(async (file, fileIndex): Promise<FileValidationOutcome> => {
-        const failure = preflight.errors.get(fileIndex);
-        if (failure !== undefined) return { ok: false, error: failure };
+    const outcomes: FileValidationOutcome[] = [];
+    for (let fileIndex = 0; fileIndex < files.length; fileIndex += 1) {
+      const file = files[fileIndex];
+      if (file === undefined) continue;
+      const failure = preflight.errors.get(fileIndex);
+      if (failure !== undefined) {
+        outcomes.push({ ok: false, error: failure });
+        continue;
+      }
 
-        const sizeBytes = preflight.sizes.get(fileIndex);
-        if (sizeBytes === undefined) {
-          return failureOutcome(fileIndex, file.originalname, corruptedFile());
-        }
-        return this.validateFile(file, fileIndex, sizeBytes);
-      }),
-    );
+      const sizeBytes = preflight.sizes.get(fileIndex);
+      outcomes.push(
+        sizeBytes === undefined
+          ? failureOutcome(fileIndex, file.originalname, corruptedFile())
+          : await this.validateFile(file, fileIndex, sizeBytes),
+      );
+    }
     const validatedUploads = outcomes.flatMap((outcome) =>
       outcome.ok ? [outcome.value] : [],
     );
@@ -186,8 +194,7 @@ export class MediaValidationService {
 
       if (
         !signatureMatchesPolicy(signature, policy) ||
-        (declaredMimeType !== 'application/octet-stream' &&
-          declaredMimeType !== policy.detectedMimeType)
+        !isDeclaredMimeCompatible(policy, declaredMimeType)
       ) {
         throw signatureMismatch(policy, declaredMimeType, signature.mimeType);
       }
@@ -195,12 +202,12 @@ export class MediaValidationService {
       let detectedFormat: string;
       let detectedMimeType: string;
       let preliminaryMetadata: Record<string, unknown>;
-      let assertSafety: () => void;
+      let assertSafety: (() => void) | undefined;
       if (policy.mediaType === MediaType.IMAGE) {
-        const inspection = await this.imageInspector.inspect(file.path, false);
+        const inspection = await this.imageInspector.inspect(file.path);
         detectedFormat = inspection.format;
         detectedMimeType = inspection.mimeType;
-        assertSafety = () => this.imageInspector.assertSafety(inspection);
+        assertSafety = undefined;
         preliminaryMetadata = {
           width: inspection.width,
           height: inspection.height,
@@ -258,7 +265,7 @@ export class MediaValidationService {
         );
       }
 
-      assertSafety();
+      assertSafety?.();
       const checksumSha256 = await this.checksum.calculate(file.path);
       return {
         ok: true,
@@ -312,8 +319,7 @@ const signatureMatchesPolicy = (
   if (signature.containerFamily === 'ebml') {
     return (
       (policy.format === 'webm' || policy.format === 'mkv') &&
-      (signature.containerVariant === undefined ||
-        signature.containerVariant === policy.format)
+      signature.containerVariant === policy.format
     );
   }
   return (

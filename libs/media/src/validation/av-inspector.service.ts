@@ -7,6 +7,11 @@ import {
 } from '@posts-media/configuration';
 import { DomainError, MediaType } from '@posts-media/domain';
 
+import {
+  SignatureDetectorService,
+  type SignatureDetection,
+} from './signature-detector.service';
+
 export interface ProbeProcess {
   readonly stdout: Readable;
   readonly stderr: Readable;
@@ -67,6 +72,8 @@ const defaultSpawner: ProbeSpawner = (binary, arguments_, options) =>
   spawn(binary, arguments_, options) as unknown as ProbeProcess;
 
 export class AvInspectorService {
+  private readonly signatureDetector = new SignatureDetectorService();
+
   public constructor(
     private readonly configuration: EnvironmentConfiguration['upload'],
     private readonly ffprobeBinary = mediaToolConfig.ffprobeBinary,
@@ -79,7 +86,8 @@ export class AvInspectorService {
     enforceSafetyLimits = true,
   ): Promise<AvInspection> {
     const document = await this.probe(temporaryPath);
-    const inspection = this.validateDocument(document, request);
+    const signature = await this.signatureDetector.detect(temporaryPath);
+    const inspection = this.validateDocument(document, request, signature);
     if (enforceSafetyLimits) this.assertSafety(inspection, request.mediaType);
     return inspection;
   }
@@ -211,6 +219,7 @@ export class AvInspectorService {
   private validateDocument(
     document: ProbeDocument,
     request: AvInspectionRequest,
+    signature: SignatureDetection,
   ): AvInspection {
     const streams = document.streams ?? [];
     const audioStreams = streams.filter(
@@ -219,6 +228,21 @@ export class AvInspectorService {
     const videoStreams = streams.filter(
       (stream) => stream.codec_type === 'video',
     );
+    const formatNames = new Set(
+      (document.format?.format_name ?? '').split(',').filter(Boolean),
+    );
+    const actualFormat = deriveFormat(signature, audioStreams, videoStreams);
+    if (
+      actualFormat === undefined ||
+      actualFormat !== request.expectedFormat ||
+      !containerMatches(actualFormat, formatNames)
+    ) {
+      throw fileSignatureMismatch(actualFormat);
+    }
+    if (mediaTypeForFormat(actualFormat) !== request.mediaType) {
+      throw fileSignatureMismatch(actualFormat);
+    }
+
     const requiredStreams =
       request.mediaType === MediaType.AUDIO ? audioStreams : videoStreams;
     if (requiredStreams.length === 0) {
@@ -228,12 +252,8 @@ export class AvInspectorService {
         422,
       );
     }
-
-    const formatNames = new Set(
-      (document.format?.format_name ?? '').split(',').filter(Boolean),
-    );
-    if (!containerMatches(request.expectedFormat, formatNames)) {
-      throw corruptedMedia();
+    if (!streamContractMatches(actualFormat, audioStreams, videoStreams)) {
+      throw fileSignatureMismatch(actualFormat);
     }
 
     for (const stream of audioStreams) {
@@ -287,8 +307,8 @@ export class AvInspectorService {
     }
 
     return {
-      format: request.expectedFormat,
-      mimeType: mimeForFormat(request.expectedFormat),
+      format: actualFormat,
+      mimeType: mimeForFormat(actualFormat),
       durationSeconds,
       streamCount: streams.length,
       ...(audioCodec === undefined ? {} : { audioCodec }),
@@ -317,6 +337,72 @@ const containerMatches = (
   };
   return (expected[expectedFormat] ?? []).some((name) => actual.has(name));
 };
+
+const deriveFormat = (
+  signature: SignatureDetection,
+  audioStreams: readonly ProbeStream[],
+  videoStreams: readonly ProbeStream[],
+): string | undefined => {
+  if (signature.containerFamily === 'iso-bmff') {
+    if (
+      signature.containerVariant === 'mov' ||
+      signature.containerVariant === 'm4a'
+    ) {
+      return signature.containerVariant;
+    }
+    if (signature.containerEvidence !== 'shared-iso') return undefined;
+    if (videoStreams.length > 0) return 'mp4';
+    return audioStreams.length > 0 ? 'm4a' : undefined;
+  }
+  if (signature.containerFamily === 'ebml') {
+    return signature.containerVariant;
+  }
+  return signature.format;
+};
+
+const streamContractMatches = (
+  format: string,
+  audioStreams: readonly ProbeStream[],
+  videoStreams: readonly ProbeStream[],
+): boolean =>
+  format === 'm4a' ||
+  format === 'mp3' ||
+  format === 'wav' ||
+  format === 'aac' ||
+  format === 'flac' ||
+  format === 'ogg'
+    ? audioStreams.length > 0 && videoStreams.length === 0
+    : videoStreams.length > 0;
+
+const mediaTypeForFormat = (
+  format: string,
+): MediaType.AUDIO | MediaType.VIDEO | undefined =>
+  format === 'm4a' ||
+  format === 'mp3' ||
+  format === 'wav' ||
+  format === 'aac' ||
+  format === 'flac' ||
+  format === 'ogg'
+    ? MediaType.AUDIO
+    : format === 'mp4' ||
+        format === 'mov' ||
+        format === 'webm' ||
+        format === 'mkv'
+      ? MediaType.VIDEO
+      : undefined;
+
+const fileSignatureMismatch = (detectedFormat?: string): DomainError =>
+  new DomainError(
+    'FILE_SIGNATURE_MISMATCH',
+    'The uploaded content does not match the submitted media format.',
+    422,
+    detectedFormat === undefined
+      ? undefined
+      : {
+          detectedFormat,
+          detectedMimeType: mimeForFormat(detectedFormat),
+        },
+  );
 
 const mimeForFormat = (format: string): string => {
   const mimeTypes: Readonly<Record<string, string>> = {

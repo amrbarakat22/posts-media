@@ -15,7 +15,7 @@ Plan: `docs/superpowers/plans/2026-08-30-posts-media-platform.md`
 | 9 | HTTP idempotency core | DONE (verified) | `7a063bc` |
 | 10 | Atomic create post with initial media | DONE (verified) | `502107e` |
 | 11 | Partial add-media flow | DONE (verified) | `a4f7224` |
-| 12 | Transactional outbox dispatcher + BullMQ topology | DONE (verified) | `f878408` |
+| 12 | Transactional outbox dispatcher + BullMQ topology | IN PROGRESS (implementation committed; recovery matrix pending) | `5057b2e`, `7dcdf34` |
 | 13 | Worker processing claim, lease renewal, attempts, workspace | TODO | - |
 | 14 | Image processing and variant publication | TODO | - |
 | 15 | Audio processing | TODO | - |

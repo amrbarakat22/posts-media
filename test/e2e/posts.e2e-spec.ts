@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:net';
 
 import type { INestApplication } from '@nestjs/common';
@@ -60,6 +61,12 @@ const insertPostWithMedia = async (
 describe('Posts E2E', () => {
   let app: INestApplication;
 
+  const createPost = (body: Record<string, unknown>) =>
+    request(app.getHttpServer())
+      .post('/api/posts')
+      .set('Idempotency-Key', randomUUID())
+      .send(body);
+
   beforeAll(async () => {
     await prisma.onModuleInit();
   });
@@ -92,9 +99,10 @@ describe('Posts E2E', () => {
   });
 
   it('creates a post from a JSON body and returns the presented shape', async () => {
-    const response = await request(app.getHttpServer())
-      .post('/api/posts')
-      .send({ title: 'Hello world', content: 'Body text' });
+    const response = await createPost({
+      title: 'Hello world',
+      content: 'Body text',
+    });
 
     expect(response.status).toBe(201);
     expect(response.body).toMatchObject({
@@ -112,18 +120,14 @@ describe('Posts E2E', () => {
   });
 
   it('rejects a create request missing a required field', async () => {
-    const response = await request(app.getHttpServer())
-      .post('/api/posts')
-      .send({ content: 'no title' });
+    const response = await createPost({ content: 'no title' });
 
     expect(response.status).toBe(400);
     expect(response.body.requestId).toEqual(expect.any(String));
   });
 
   it('gets a single post by id and 404s for an unknown id', async () => {
-    const created = await request(app.getHttpServer())
-      .post('/api/posts')
-      .send({ title: 'Get me', content: 'Body' });
+    const created = await createPost({ title: 'Get me', content: 'Body' });
 
     const found = await request(app.getHttpServer()).get(
       `/api/posts/${created.body.id}`,
@@ -139,9 +143,10 @@ describe('Posts E2E', () => {
   });
 
   it('updates only title/content via PATCH', async () => {
-    const created = await request(app.getHttpServer())
-      .post('/api/posts')
-      .send({ title: 'Original title', content: 'Original content' });
+    const created = await createPost({
+      title: 'Original title',
+      content: 'Original content',
+    });
 
     const updated = await request(app.getHttpServer())
       .patch(`/api/posts/${created.body.id}`)
@@ -153,9 +158,7 @@ describe('Posts E2E', () => {
   });
 
   it('soft-deletes a post: excluded from default get/list, visible with includeDeleted, restorable', async () => {
-    const created = await request(app.getHttpServer())
-      .post('/api/posts')
-      .send({ title: 'Delete me', content: 'Body' });
+    const created = await createPost({ title: 'Delete me', content: 'Body' });
     const postId = created.body.id as string;
 
     const deleted = await request(app.getHttpServer()).delete(
@@ -200,9 +203,7 @@ describe('Posts E2E', () => {
 
   it('paginates results honoring page/pageSize and reports totals', async () => {
     for (let index = 0; index < 5; index += 1) {
-      await request(app.getHttpServer())
-        .post('/api/posts')
-        .send({ title: `Post ${index}`, content: 'Body' });
+      await createPost({ title: `Post ${index}`, content: 'Body' });
     }
 
     const page1 = await request(app.getHttpServer()).get(
@@ -223,15 +224,9 @@ describe('Posts E2E', () => {
   });
 
   it('filters by case-insensitive search across title and content', async () => {
-    await request(app.getHttpServer())
-      .post('/api/posts')
-      .send({ title: 'Sunset Photography', content: 'landscape' });
-    await request(app.getHttpServer())
-      .post('/api/posts')
-      .send({ title: 'Unrelated', content: 'mentions SUNSET here' });
-    await request(app.getHttpServer())
-      .post('/api/posts')
-      .send({ title: 'Nothing matching', content: 'no overlap' });
+    await createPost({ title: 'Sunset Photography', content: 'landscape' });
+    await createPost({ title: 'Unrelated', content: 'mentions SUNSET here' });
+    await createPost({ title: 'Nothing matching', content: 'no overlap' });
 
     const response = await request(app.getHttpServer()).get(
       '/api/posts?search=sunset',
@@ -254,12 +249,8 @@ describe('Posts E2E', () => {
   });
 
   it('sorts by the requested field and order', async () => {
-    await request(app.getHttpServer())
-      .post('/api/posts')
-      .send({ title: 'B post', content: 'x' });
-    await request(app.getHttpServer())
-      .post('/api/posts')
-      .send({ title: 'A post', content: 'x' });
+    await createPost({ title: 'B post', content: 'x' });
+    await createPost({ title: 'A post', content: 'x' });
 
     const response = await request(app.getHttpServer()).get(
       '/api/posts?sortBy=title&sortOrder=asc',
@@ -272,33 +263,32 @@ describe('Posts E2E', () => {
   });
 
   it('rejects a title over 200 characters', async () => {
-    const response = await request(app.getHttpServer())
-      .post('/api/posts')
-      .send({ title: 'a'.repeat(201), content: 'x' });
+    const response = await createPost({ title: 'a'.repeat(201), content: 'x' });
 
     expect(response.status).toBe(400);
   });
 
   it('rejects content over 10,000 characters', async () => {
-    const response = await request(app.getHttpServer())
-      .post('/api/posts')
-      .send({ title: 'ok', content: 'a'.repeat(10001) });
+    const response = await createPost({
+      title: 'ok',
+      content: 'a'.repeat(10001),
+    });
 
     expect(response.status).toBe(400);
   });
 
   it('rejects unknown body fields', async () => {
-    const response = await request(app.getHttpServer())
-      .post('/api/posts')
-      .send({ title: 'ok', content: 'x', unexpected: true });
+    const response = await createPost({
+      title: 'ok',
+      content: 'x',
+      unexpected: true,
+    });
 
     expect(response.status).toBe(400);
   });
 
   it('treats delete and restore as idempotent when repeated', async () => {
-    const created = await request(app.getHttpServer())
-      .post('/api/posts')
-      .send({ title: 'Twice', content: 'x' });
+    const created = await createPost({ title: 'Twice', content: 'x' });
     const postId = created.body.id as string;
 
     await request(app.getHttpServer())
@@ -327,9 +317,7 @@ describe('Posts E2E', () => {
   });
 
   it('filters by createdFrom/createdTo date range', async () => {
-    await request(app.getHttpServer())
-      .post('/api/posts')
-      .send({ title: 'InRange', content: 'x' });
+    await createPost({ title: 'InRange', content: 'x' });
 
     const from = new Date(Date.now() - 60_000).toISOString();
     const to = new Date(Date.now() + 60_000).toISOString();

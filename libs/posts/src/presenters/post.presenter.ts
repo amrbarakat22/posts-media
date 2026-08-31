@@ -1,9 +1,11 @@
-import type { Media, Post } from '@prisma/client';
+import type { Media } from '@prisma/client';
 
 import {
   calculatePostAggregateStatus,
   ProcessingStatus,
 } from '@posts-media/domain';
+
+import type { PostWithMedia } from '../repositories/posts.repository';
 
 export interface MediaSummaryDto {
   id: string;
@@ -29,8 +31,6 @@ export interface PostResponseDto {
   media: MediaSummaryDto[];
   links: PostLinksDto;
 }
-
-export type PostWithMedia = Post & { media: Media[] };
 
 const presentMediaSummary = (media: Media): MediaSummaryDto => ({
   id: media.id,

@@ -10,13 +10,11 @@ import { PostsModule } from '@posts-media/posts';
 
 import { PostsController } from './http/controllers/posts.controller';
 import { RequestIdMiddleware } from './http/middleware/request-id.middleware';
-import { RequestWorkspaceService } from './upload/request-workspace.service';
-import { UploadCleanupService } from './upload/upload-cleanup.service';
+import { UploadModule } from './upload/upload.module';
 
 @Module({
-  imports: [ConfigurationModule, DatabaseModule, PostsModule],
+  imports: [ConfigurationModule, DatabaseModule, PostsModule, UploadModule],
   controllers: [PostsController],
-  providers: [RequestWorkspaceService, UploadCleanupService],
 })
 export class ApiModule implements NestModule {
   public configure(consumer: MiddlewareConsumer): void {

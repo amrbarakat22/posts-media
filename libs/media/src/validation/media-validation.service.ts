@@ -1,5 +1,6 @@
 import { stat } from 'node:fs/promises';
 
+import { Injectable } from '@nestjs/common';
 import type { EnvironmentConfiguration } from '@posts-media/configuration';
 import {
   DomainError,
@@ -59,6 +60,7 @@ export interface MediaValidationResult {
 
 const MEBIBYTE = 1024n * 1024n;
 
+@Injectable()
 export class MediaValidationService {
   private readonly signatureDetector = new SignatureDetectorService();
   private readonly checksum = new ChecksumService();

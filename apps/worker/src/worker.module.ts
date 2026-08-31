@@ -19,6 +19,8 @@ import { OutboxClaimRepository } from './outbox/outbox-claim.repository';
 import { OutboxCleanupService } from './outbox/outbox-cleanup.service';
 import { OutboxDispatcherService } from './outbox/outbox-dispatcher.service';
 import { PublicationBackoffService } from './outbox/publication-backoff.service';
+import { WorkerClaimService } from './processing/worker-claim.service';
+import { GracefulShutdownService } from './processing/graceful-shutdown.service';
 
 const queueProvider = (token: symbol, mediaType: MediaType) => ({
   provide: token,
@@ -49,6 +51,8 @@ const queueProvider = (token: symbol, mediaType: MediaType) => ({
     DispatchPublicationService,
     OutboxDispatcherService,
     OutboxCleanupService,
+    WorkerClaimService,
+    GracefulShutdownService,
   ],
 })
 export class WorkerModule {}

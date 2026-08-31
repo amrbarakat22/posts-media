@@ -2,9 +2,13 @@ import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { mkdir, readdir, rm, stat } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve } from 'node:path';
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { EnvironmentConfigurationService } from '@posts-media/configuration';
-import type { ObjectStoragePort, ObjectRef } from '@posts-media/storage';
+import {
+  OBJECT_STORAGE_PORT,
+  type ObjectStoragePort,
+  type ObjectRef,
+} from '@posts-media/storage';
 
 @Injectable()
 export class ProcessingWorkspaceService {
@@ -12,7 +16,7 @@ export class ProcessingWorkspaceService {
 
   public constructor(
     configuration: EnvironmentConfigurationService,
-    private readonly storage: ObjectStoragePort,
+    @Inject(OBJECT_STORAGE_PORT) private readonly storage: ObjectStoragePort,
   ) {
     this.root = resolve(configuration.values.worker.temporaryRoot);
   }

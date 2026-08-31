@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '@posts-media/database';
 import { MediaVariantType } from '@prisma/client';
 import {
+  OBJECT_STORAGE_PORT,
   ObjectKeyService,
   type ObjectStoragePort,
   type ObjectRef,
@@ -36,7 +37,7 @@ const checksum = (path: string): Promise<string> =>
 export class VariantPublicationService {
   public constructor(
     private readonly prisma: PrismaService,
-    private readonly storage: ObjectStoragePort,
+    @Inject(OBJECT_STORAGE_PORT) private readonly storage: ObjectStoragePort,
     private readonly keys: ObjectKeyService,
   ) {}
 

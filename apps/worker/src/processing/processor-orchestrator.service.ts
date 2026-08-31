@@ -12,6 +12,8 @@ import { ProcessingWorkspaceService } from './processing-workspace.service';
 export type ProcessorHandler = (
   media: Media,
   workspace: string,
+  leaseToken: string,
+  attemptId: string,
 ) => Promise<void>;
 
 @Injectable()
@@ -66,7 +68,7 @@ export class ProcessorOrchestratorService {
         claim.media,
         join(directory, 'original'),
       );
-      await handler(claim.media, directory);
+      await handler(claim.media, directory, leaseToken, attempt.id);
       await this.claims.complete(
         payload.mediaId,
         payload.generation,

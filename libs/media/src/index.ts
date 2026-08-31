@@ -7,6 +7,7 @@ export * from './validation/media-validation.service';
 export * from './validation/mime-policy';
 export * from './validation/signature-detector.service';
 export * from './media.module';
+export * from './presenters/media.presenter';
 export * from './repositories/media.repository';
 
 export const libraryName = 'media';

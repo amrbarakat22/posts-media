@@ -1,3 +1,4 @@
+export * from './application/add-post-media.service';
 export * from './application/create-post.service';
 export * from './application/posts.service';
 export * from './posts.module';

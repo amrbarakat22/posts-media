@@ -16,6 +16,7 @@ import {
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import {
+  AddPostMediaService,
   CreatePostService,
   presentPost,
   PostsService,
@@ -41,6 +42,7 @@ export class PostsController {
   public constructor(
     private readonly posts: PostsService,
     private readonly createPost: CreatePostService,
+    private readonly addPostMedia: AddPostMediaService,
   ) {}
 
   /**
@@ -62,6 +64,29 @@ export class PostsController {
       idempotencyKey,
       title: body.title,
       content: body.content,
+      files: files ?? [],
+      requestId: (request as RequestWithId).requestId,
+    });
+  }
+
+  /**
+   * Adds media to an existing post with partial-success semantics (Part I
+   * §2.5/§10.5): valid files are persisted, invalid ones are reported
+   * back, and the whole request only fails when zero files are accepted.
+   */
+  @Post(':postId/media')
+  @UseInterceptors(
+    FilesInterceptor('media', MULTIPART_FIELD_DECORATOR_MAX_FILES),
+  )
+  public async addMedia(
+    @Param('postId') postId: string,
+    @UploadedFiles() files: Express.Multer.File[] | undefined,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Req() request: Request,
+  ) {
+    return this.addPostMedia.execute({
+      postId,
+      idempotencyKey,
       files: files ?? [],
       requestId: (request as RequestWithId).requestId,
     });

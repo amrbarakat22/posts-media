@@ -15,12 +15,15 @@ export class PrismaService
   extends PrismaClient
   implements OnModuleInit, OnModuleDestroy
 {
-  public constructor(databaseUrl: string) {
+  public constructor(
+    databaseUrl: string,
+    private readonly connectOnInit = true,
+  ) {
     super({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
   }
 
   public async onModuleInit(): Promise<void> {
-    await this.$connect();
+    if (this.connectOnInit) await this.$connect();
   }
 
   public async onModuleDestroy(): Promise<void> {

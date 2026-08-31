@@ -68,6 +68,13 @@ export class ApiExceptionFilter implements ExceptionFilter {
         : undefined,
     );
 
+    if (domainError.code === 'IDEMPOTENCY_REQUEST_IN_PROGRESS') {
+      const retryAfterSeconds = domainError.details?.['retryAfterSeconds'];
+      if (typeof retryAfterSeconds === 'number') {
+        response.setHeader('Retry-After', String(retryAfterSeconds));
+      }
+    }
+
     response
       .status(domainError.httpStatus)
       .json(toErrorResponseBody(domainError, requestId));

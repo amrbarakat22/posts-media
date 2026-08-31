@@ -32,6 +32,16 @@ class ProbeController {
   unexpected(): never {
     throw new Error('Internal detail: /var/secret/credentials.txt leaked');
   }
+
+  @Get('idempotency-in-progress')
+  idempotencyInProgress(): never {
+    throw new DomainError(
+      'IDEMPOTENCY_REQUEST_IN_PROGRESS',
+      'A request with this Idempotency-Key is already being processed.',
+      409,
+      { retryAfterSeconds: 2 },
+    );
+  }
 }
 
 @Module({ controllers: [ProbeController] })
@@ -97,6 +107,24 @@ describe('ApiExceptionFilter', () => {
     expect(response.body.code).toBe('INTERNAL_ERROR');
     expect(JSON.stringify(response.body)).not.toContain('/var/secret');
     expect(response.body).not.toHaveProperty('stack');
+  });
+
+  it('sets a Retry-After header for IDEMPOTENCY_REQUEST_IN_PROGRESS', async () => {
+    const response = await request(app.getHttpServer()).get(
+      '/probe/idempotency-in-progress',
+    );
+
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe('IDEMPOTENCY_REQUEST_IN_PROGRESS');
+    expect(response.headers['retry-after']).toBe('2');
+  });
+
+  it('does not set Retry-After for other error codes', async () => {
+    const response = await request(app.getHttpServer()).get(
+      '/probe/domain-error',
+    );
+
+    expect(response.headers['retry-after']).toBeUndefined();
   });
 
   it('always returns the X-Request-Id header alongside the error body', async () => {

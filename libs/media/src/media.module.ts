@@ -3,14 +3,23 @@ import {
   ConfigurationModule,
   EnvironmentConfigurationService,
 } from '@posts-media/configuration';
+import { DatabaseModule, IdempotencyModule } from '@posts-media/database';
+import { StorageModule } from '@posts-media/storage';
 
+import { MediaService } from './application/media.service';
 import { MediaRepository } from './repositories/media.repository';
 import { MediaValidationService } from './validation/media-validation.service';
 
 @Module({
-  imports: [ConfigurationModule],
+  imports: [
+    ConfigurationModule,
+    DatabaseModule,
+    IdempotencyModule,
+    StorageModule,
+  ],
   providers: [
     MediaRepository,
+    MediaService,
     {
       provide: MediaValidationService,
       inject: [EnvironmentConfigurationService],
@@ -18,6 +27,6 @@ import { MediaValidationService } from './validation/media-validation.service';
         new MediaValidationService(configuration.values.upload),
     },
   ],
-  exports: [MediaRepository, MediaValidationService],
+  exports: [MediaRepository, MediaValidationService, MediaService],
 })
 export class MediaModule {}

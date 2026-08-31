@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { DatabaseClient } from '@posts-media/database';
+import { PrismaService, type DatabaseClient } from '@posts-media/database';
 import { MediaType } from '@posts-media/domain';
 import { jobNameFor, mediaJobId, queueNameFor } from '@posts-media/queues';
 import type { MediaJobPayloadV1 } from '@posts-media/queues';
@@ -32,6 +32,17 @@ export interface CreateMediaWithDispatchInput {
  */
 @Injectable()
 export class MediaRepository {
+  public constructor(private readonly prisma: PrismaService) {}
+
+  public findById(
+    id: string,
+  ): Promise<Media & { variants: Prisma.MediaVariantGetPayload<object>[] }> {
+    return this.prisma.media.findUniqueOrThrow({
+      where: { id },
+      include: { variants: true },
+    });
+  }
+
   /**
    * Creates one `Media` row (status `PENDING`, generation 1) and its
    * generation-1 `ProcessingDispatch` row in the given client. Both ids

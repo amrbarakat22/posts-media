@@ -32,11 +32,14 @@ export interface CreateMediaWithDispatchInput {
  */
 @Injectable()
 export class MediaRepository {
-  public constructor(private readonly prisma: PrismaService) {}
+  public constructor(private readonly prisma?: PrismaService) {}
 
   public findById(
     id: string,
   ): Promise<Media & { variants: Prisma.MediaVariantGetPayload<object>[] }> {
+    if (this.prisma === undefined) {
+      throw new Error('MediaRepository read client is not configured');
+    }
     return this.prisma.media.findUniqueOrThrow({
       where: { id },
       include: { variants: true },

@@ -81,10 +81,12 @@ export class DispatchPublicationService {
       return;
     }
 
+    let queuePublished = false;
     try {
       await queue.add(dispatch.jobName, payload, {
         jobId: dispatch.jobId,
       });
+      queuePublished = true;
       await this.claims.markPublished(dispatch.id, dispatch.leaseToken);
     } catch (error) {
       const nextAttemptNumber = dispatch.publishAttempts + 1;
@@ -96,7 +98,7 @@ export class DispatchPublicationService {
         dispatch.id,
         dispatch.leaseToken,
         new Date(Date.now() + delay),
-        'REDIS_PUBLISH_FAILED',
+        queuePublished ? 'OUTBOX_FINALIZATION_FAILED' : 'REDIS_PUBLISH_FAILED',
         error instanceof Error ? error.message : 'Redis publication failed',
       );
     }

@@ -13,6 +13,7 @@ import * as request from 'supertest';
 
 import { bootstrap } from '../../apps/api/src/main';
 import { validEnvironment, withEnvironment } from '../support/environment';
+import { assertTestInfrastructure } from '../support/test-infrastructure.guard';
 
 const availablePort = async (): Promise<number> =>
   new Promise((resolve, reject) => {
@@ -33,6 +34,10 @@ const availablePort = async (): Promise<number> =>
 const databaseUrl =
   process.env.DATABASE_URL ??
   'postgresql://posts:posts@postgres:5432/posts_media_test';
+assertTestInfrastructure({
+  databaseUrl,
+  minioEndpoint: process.env.MINIO_ENDPOINT ?? 'minio',
+});
 const originalsBucket = process.env.MINIO_ORIGINALS_BUCKET ?? 'post-originals';
 const processedBucket = process.env.MINIO_PROCESSED_BUCKET ?? 'post-processed';
 const temporaryBucket = process.env.MINIO_TEMP_BUCKET ?? 'post-temporary';

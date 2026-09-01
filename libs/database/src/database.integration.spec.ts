@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 
+import { assertTestInfrastructure } from '../../../test/support/test-infrastructure.guard';
 import { PrismaService } from './prisma.service';
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -7,6 +8,7 @@ const databaseUrl = process.env.DATABASE_URL;
 if (databaseUrl === undefined || databaseUrl.length === 0) {
   throw new Error('DATABASE_URL must be set for database integration tests');
 }
+assertTestInfrastructure({ databaseUrl });
 
 const uniqueConstraint = expect.objectContaining({ code: 'P2002' });
 

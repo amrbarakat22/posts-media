@@ -33,7 +33,13 @@ const getJson = (
     }).on('error', reject);
   });
 
-const getText = (url: string): Promise<{ status: number; body: string }> =>
+const getText = (
+  url: string,
+): Promise<{
+  status: number;
+  headers: Record<string, string | string[] | undefined>;
+  body: string;
+}> =>
   new Promise((resolve, reject) => {
     httpGet(url, (response) => {
       const chunks: Buffer[] = [];
@@ -41,6 +47,7 @@ const getText = (url: string): Promise<{ status: number; body: string }> =>
       response.on('end', () =>
         resolve({
           status: response.statusCode ?? 0,
+          headers: response.headers,
           body: Buffer.concat(chunks).toString('utf8'),
         }),
       );
@@ -129,6 +136,10 @@ describe('API bootstrap', () => {
           ]);
           expect(html).toMatchObject({ status: 200 });
           expect(html.body).toContain('Posts &amp; Media');
+          expect(html.headers['content-security-policy']).toContain(
+            "default-src 'self'",
+          );
+          expect(html.headers['x-content-type-options']).toBe('nosniff');
           expect(css.status).toBe(200);
           expect(javascript.status).toBe(200);
           const paths = (

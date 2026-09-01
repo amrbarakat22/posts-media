@@ -4,6 +4,7 @@ import { PrismaService } from '@posts-media/database';
 import { MediaType } from '@posts-media/domain';
 
 import { WorkerClaimService } from '../../apps/worker/src/processing/worker-claim.service';
+import { assertTestInfrastructure } from '../support/test-infrastructure.guard';
 
 const databaseUrl = process.env.DATABASE_URL;
 if (databaseUrl === undefined || databaseUrl.length === 0) {
@@ -11,6 +12,7 @@ if (databaseUrl === undefined || databaseUrl.length === 0) {
     'DATABASE_URL must be set for worker claim integration tests',
   );
 }
+assertTestInfrastructure({ databaseUrl });
 
 describe('WorkerClaimService', () => {
   const prisma = new PrismaService(databaseUrl);

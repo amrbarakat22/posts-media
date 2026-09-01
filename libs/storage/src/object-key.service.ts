@@ -39,6 +39,20 @@ export class ObjectKeyService {
     };
   }
 
+  public processedAttemptKey(
+    postId: string,
+    mediaId: string,
+    processingProfile: string,
+    generation: number,
+    attemptId: string,
+    canonicalFilename: string,
+  ): ObjectRef {
+    return {
+      bucket: this.buckets.processed,
+      objectKey: `posts/${postId}/${mediaId}/${processingProfile}/generations/${generation}/attempts/${attemptId}/${canonicalFilename}`,
+    };
+  }
+
   public uploadStagingKey(requestId: string, fileId: string): ObjectRef {
     return {
       bucket: this.buckets.temporary,

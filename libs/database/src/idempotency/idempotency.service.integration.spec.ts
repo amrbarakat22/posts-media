@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
+import { assertTestInfrastructure } from '../../../../test/support/test-infrastructure.guard';
 import type {
   IdempotencyOperationContext,
   IdempotentOutcome,
@@ -10,6 +11,7 @@ import { PrismaService } from '../prisma.service';
 const databaseUrl =
   process.env.DATABASE_URL ??
   'postgresql://posts:posts@postgres:5432/posts_media_test';
+assertTestInfrastructure({ databaseUrl });
 
 const prisma = new PrismaService(databaseUrl);
 

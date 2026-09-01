@@ -1,5 +1,7 @@
 import { spawn } from 'node:child_process';
 
+import type { ChildProcessTracker } from './ffmpeg.service';
+
 export interface ProbeStream {
   readonly codec_type?: string;
   readonly codec_name?: string;
@@ -10,6 +12,9 @@ export interface ProbeStream {
   readonly height?: number;
   readonly r_frame_rate?: string;
   readonly duration?: string;
+  readonly side_data_list?: readonly {
+    readonly rotation?: number;
+  }[];
 }
 
 export interface ProbeResult {
@@ -29,6 +34,8 @@ export interface FfprobeOptions {
 }
 
 export class FfprobeService {
+  public constructor(private readonly tracker?: ChildProcessTracker) {}
+
   public async probe(
     path: string,
     options: FfprobeOptions = {},
@@ -53,13 +60,28 @@ export class FfprobeService {
           stdio: ['ignore', 'pipe', 'pipe'],
         },
       );
+      this.tracker?.track(child);
       let stdout = '';
       let stderr = '';
       let settled = false;
-      const timer = setTimeout(() => {
+      let terminationError: Error | undefined;
+      let escalation: NodeJS.Timeout | undefined;
+      let tracked = this.tracker !== undefined;
+      const untrack = () => {
+        if (!tracked) return;
+        tracked = false;
+        this.tracker?.untrack(child);
+      };
+      const terminate = (error: Error) => {
+        if (terminationError !== undefined) return;
+        terminationError = error;
+        clearTimeout(timer);
         child.kill('SIGTERM');
-        reject(new Error('MEDIA_VALIDATION_TIMEOUT'));
-        settled = true;
+        escalation = setTimeout(() => child.kill('SIGKILL'), 5000);
+        escalation.unref();
+      };
+      const timer = setTimeout(() => {
+        terminate(new Error('MEDIA_VALIDATION_TIMEOUT'));
       }, timeoutMs);
       const append = (current: string, chunk: Buffer): string => {
         if (Buffer.byteLength(current) + chunk.byteLength > maxOutputBytes) {
@@ -68,31 +90,37 @@ export class FfprobeService {
         return current + chunk.toString('utf8');
       };
       child.stdout.on('data', (chunk: Buffer) => {
+        if (terminationError !== undefined) return;
         try {
           stdout = append(stdout, chunk);
         } catch (error) {
-          child.kill('SIGTERM');
-          if (!settled) {
-            settled = true;
-            clearTimeout(timer);
-            reject(error);
-          }
+          terminate(error as Error);
         }
       });
       child.stderr.on('data', (chunk: Buffer) => {
-        stderr = append(stderr, chunk);
+        if (terminationError !== undefined) return;
+        try {
+          stderr = append(stderr, chunk);
+        } catch (error) {
+          terminate(error as Error);
+        }
       });
       child.once('error', (error) => {
+        untrack();
         if (!settled) {
           settled = true;
           clearTimeout(timer);
-          reject(error);
+          if (escalation !== undefined) clearTimeout(escalation);
+          reject(terminationError ?? error);
         }
       });
       child.once('close', (code) => {
+        untrack();
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        if (escalation !== undefined) clearTimeout(escalation);
+        if (terminationError !== undefined) return reject(terminationError);
         if (code !== 0)
           return reject(
             new Error(

@@ -61,18 +61,22 @@ export class VariantPublicationService {
           attemptId,
           artifact.filename,
         );
-        const final = this.keys.processedKey(
+        const final = this.keys.processedAttemptKey(
           media.postId,
           media.id,
           media.processingProfile,
+          generation,
+          attemptId,
           artifact.filename,
         );
         await this.storage.putFile(ref, artifact.path);
         temporary.push(ref);
         await this.storage.stat(ref);
+        // Track the intended final key before copy so a partial copy or a
+        // post-copy verification failure is still compensatable.
+        finals.push(final);
         await this.storage.copy(ref, final);
         await this.storage.stat(final);
-        finals.push(final);
       }
 
       const completed = await this.prisma.withTransaction(async (tx) => {
@@ -90,6 +94,8 @@ export class VariantPublicationService {
             processingLeaseToken: null,
             processingLeaseExpiresAt: null,
             activeJobId: null,
+            lastErrorCode: null,
+            lastErrorMessage: null,
             metadata,
           },
         });

@@ -4,6 +4,7 @@ import {
   type OnModuleInit,
 } from '@nestjs/common';
 import { EnvironmentConfigurationService } from '@posts-media/configuration';
+import { PrismaService } from '@posts-media/database';
 import {
   AudioProcessorService,
   ImageProcessorService,
@@ -19,6 +20,7 @@ import {
   VariantPublicationService,
   type ProcessedArtifact,
 } from '../processing/variant-publication.service';
+import { GracefulShutdownService } from '../processing/graceful-shutdown.service';
 
 @Injectable()
 export class MediaQueueConsumersService
@@ -26,6 +28,7 @@ export class MediaQueueConsumersService
 {
   private readonly workers: Worker<MediaJobPayloadV1>[] = [];
   private activeJobs = 0;
+  private readonly resolveShutdownBarrier: () => void;
 
   public constructor(
     private readonly configuration: EnvironmentConfigurationService,
@@ -34,7 +37,16 @@ export class MediaQueueConsumersService
     private readonly image: ImageProcessorService,
     private readonly audio: AudioProcessorService,
     private readonly video: VideoProcessorService,
-  ) {}
+    private readonly gracefulShutdown: GracefulShutdownService,
+    prisma: PrismaService,
+  ) {
+    let resolveBarrier: (() => void) | undefined;
+    const barrier = new Promise<void>((resolve) => {
+      resolveBarrier = resolve;
+    });
+    this.resolveShutdownBarrier = resolveBarrier!;
+    prisma.registerShutdownBarrier(barrier);
+  }
 
   public onModuleInit(): void {
     if (this.configuration.values.app.nodeEnvironment === 'test') return;
@@ -46,7 +58,19 @@ export class MediaQueueConsumersService
   }
 
   public async onModuleDestroy(): Promise<void> {
-    await Promise.all(this.workers.map((worker) => worker.close()));
+    try {
+      await Promise.all(this.workers.map((worker) => worker.pause(true)));
+      await this.gracefulShutdown.shutdown();
+      const deadline = Date.now() + 5000;
+      while (this.activeJobs > 0 && Date.now() < deadline) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 25));
+      }
+      await Promise.all(
+        this.workers.map((worker) => worker.close(this.activeJobs > 0)),
+      );
+    } finally {
+      this.resolveShutdownBarrier();
+    }
   }
 
   public get consumersActive(): boolean {

@@ -1,4 +1,11 @@
-import { Controller, Get, Headers, Param, Post } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Headers,
+  HttpCode,
+  Param,
+  Post,
+} from '@nestjs/common';
 import { MediaService } from '@posts-media/media';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 
@@ -26,6 +33,7 @@ export class MediaController {
   }
 
   @Post(':mediaId/retry')
+  @HttpCode(200)
   @ApiOperation({ summary: 'Retry terminally failed media' })
   @ApiHeader({ name: 'Idempotency-Key', required: true })
   public retry(

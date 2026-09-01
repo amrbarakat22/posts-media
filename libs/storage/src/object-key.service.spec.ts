@@ -59,6 +59,34 @@ describe('ObjectKeyService', () => {
     });
   });
 
+  describe('processedAttemptKey', () => {
+    it('isolates final artifacts by generation and attempt ownership', () => {
+      const first = service.processedAttemptKey(
+        'post-1',
+        'media-1',
+        'balanced-v1',
+        1,
+        'attempt-1',
+        'optimized.webp',
+      );
+      const newerOwner = service.processedAttemptKey(
+        'post-1',
+        'media-1',
+        'balanced-v1',
+        1,
+        'attempt-2',
+        'optimized.webp',
+      );
+
+      expect(first).toEqual({
+        bucket: 'post-processed',
+        objectKey:
+          'posts/post-1/media-1/balanced-v1/generations/1/attempts/attempt-1/optimized.webp',
+      });
+      expect(newerOwner).not.toEqual(first);
+    });
+  });
+
   describe('uploadStagingKey', () => {
     it('is deterministic from a controlled requestId and fileId only', () => {
       const key = service.uploadStagingKey('req-1', 'file-1');

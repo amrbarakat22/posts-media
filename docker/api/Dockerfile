@@ -30,7 +30,10 @@ ENV NODE_ENV=production
 COPY package.json package-lock.json ./
 COPY prisma ./prisma
 COPY prisma.config.ts ./
-RUN DATABASE_URL=postgresql://build:build@localhost:5432/build npm ci --omit=dev
+RUN npm ci --omit=dev --omit=peer --omit=optional --ignore-scripts
+COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=build /app/node_modules/@img/sharp-linux-x64 ./node_modules/@img/sharp-linux-x64
+COPY --from=build /app/node_modules/@img/sharp-libvips-linux-x64 ./node_modules/@img/sharp-libvips-linux-x64
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/apps/api/public ./apps/api/public
 

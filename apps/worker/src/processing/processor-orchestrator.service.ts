@@ -87,7 +87,7 @@ export class ProcessorOrchestratorService {
         'PROCESSING_FAILED',
         error instanceof Error ? error.message : 'Processing failed',
       );
-      throw error;
+      throw new Error('PROCESSING_FAILED');
     } finally {
       clearInterval(renewal);
       await this.workspace.cleanup(directory).catch(() => undefined);

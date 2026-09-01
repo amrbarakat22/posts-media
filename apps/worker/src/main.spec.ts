@@ -14,9 +14,25 @@ describe('worker bootstrap', () => {
   });
 
   it('starts with validated worker configuration', async () => {
-    await withEnvironment(validEnvironment(), async () => {
-      const applicationContext = await bootstrap({ logger: false });
-      await applicationContext.close();
-    });
+    await withEnvironment(
+      validEnvironment({
+        NODE_ENV: 'test',
+        DATABASE_URL: 'postgresql://posts:posts@postgres:5432/posts_media_test',
+        REDIS_HOST: 'redis',
+        MINIO_ENDPOINT: 'minio',
+      }),
+      async () => {
+        const signalListeners = process.listenerCount('SIGTERM');
+        const applicationContext = await bootstrap({ logger: false });
+        try {
+          expect(process.listenerCount('SIGTERM')).toBeGreaterThan(
+            signalListeners,
+          );
+        } finally {
+          await applicationContext.close();
+        }
+        expect(process.listenerCount('SIGTERM')).toBe(signalListeners);
+      },
+    );
   });
 });

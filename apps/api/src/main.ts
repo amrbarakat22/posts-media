@@ -6,6 +6,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { EnvironmentConfigurationService } from '@posts-media/configuration';
 import { DomainError } from '@posts-media/domain';
 import type { ValidationError } from 'class-validator';
+import helmet from 'helmet';
 import { join } from 'node:path';
 
 import { ApiModule } from './api.module';
@@ -29,6 +30,23 @@ export async function bootstrap(
   options?: NestApplicationOptions,
 ): Promise<INestApplication> {
   const app = await NestFactory.create(ApiModule, options);
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          baseUri: ["'self'"],
+          objectSrc: ["'none'"],
+          frameAncestors: ["'none'"],
+          scriptSrc: ["'self'", "'unsafe-inline'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", 'data:', 'blob:', 'http://127.0.0.1:9000'],
+          mediaSrc: ["'self'", 'blob:', 'http://127.0.0.1:9000'],
+          connectSrc: ["'self'", 'http://127.0.0.1:9000'],
+        },
+      },
+    }),
+  );
   (app as NestExpressApplication).useStaticAssets(
     join(process.cwd(), 'apps/api/public'),
   );

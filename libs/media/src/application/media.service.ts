@@ -107,8 +107,12 @@ export class MediaService {
             );
           }
           const generation = current.processingGeneration + 1;
-          const updated = await tx.media.update({
-            where: { id },
+          const claimed = await tx.media.updateMany({
+            where: {
+              id,
+              processingStatus: 'FAILED',
+              processingGeneration: current.processingGeneration,
+            },
             data: {
               processingGeneration: generation,
               processingStatus: 'PENDING',
@@ -122,6 +126,16 @@ export class MediaService {
               lastErrorCode: null,
               lastErrorMessage: null,
             },
+          });
+          if (claimed.count !== 1) {
+            throw new DomainError(
+              'MEDIA_RETRY_NOT_ALLOWED',
+              'Only failed media can be retried.',
+              409,
+            );
+          }
+          const updated = await tx.media.findUniqueOrThrow({
+            where: { id },
             include: { variants: true },
           });
           const dispatchId = randomUUID();

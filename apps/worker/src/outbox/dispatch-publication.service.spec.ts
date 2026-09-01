@@ -118,4 +118,46 @@ describe('DispatchPublicationService', () => {
       'ECONNREFUSED',
     );
   });
+
+  it('re-publishes the same deterministic job after queue success but DB finalization failure', async () => {
+    const queue = { add: jest.fn().mockResolvedValue(undefined) };
+    const claims = {
+      markPublished: jest
+        .fn()
+        .mockRejectedValueOnce(new Error('POSTGRES_FINALIZATION_FAILED'))
+        .mockResolvedValueOnce(true),
+      markDead: jest.fn(),
+      markRetryWait: jest.fn().mockResolvedValue(true),
+    };
+    const service = new DispatchPublicationService(
+      claims as never,
+      { delayMs: jest.fn().mockReturnValue(1000) } as never,
+      { values: { outbox: { maxRetryDelaySeconds: 60 } } } as never,
+      queue as never,
+      queue as never,
+      queue as never,
+    );
+
+    await service.publish(dispatch());
+    await service.publish(
+      dispatch({
+        publishAttempts: 1,
+        leaseToken: '00000000-0000-0000-0000-000000000002',
+      }),
+    );
+
+    expect(queue.add).toHaveBeenCalledTimes(2);
+    expect(queue.add.mock.calls[0]).toEqual(queue.add.mock.calls[1]);
+    expect(claims.markRetryWait).toHaveBeenCalledWith(
+      'd1',
+      '00000000-0000-0000-0000-000000000001',
+      expect.any(Date),
+      'OUTBOX_FINALIZATION_FAILED',
+      'POSTGRES_FINALIZATION_FAILED',
+    );
+    expect(claims.markPublished).toHaveBeenLastCalledWith(
+      'd1',
+      '00000000-0000-0000-0000-000000000002',
+    );
+  });
 });

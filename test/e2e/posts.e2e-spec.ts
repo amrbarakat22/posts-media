@@ -7,6 +7,7 @@ import * as request from 'supertest';
 
 import { bootstrap } from '../../apps/api/src/main';
 import { validEnvironment, withEnvironment } from '../support/environment';
+import { assertTestInfrastructure } from '../support/test-infrastructure.guard';
 
 /** Resolves a free TCP port on 127.0.0.1 — `PORT=0` fails the env schema's `min: 1` port check. */
 const availablePort = async (): Promise<number> =>
@@ -28,6 +29,7 @@ const availablePort = async (): Promise<number> =>
 const databaseUrl =
   process.env.DATABASE_URL ??
   'postgresql://posts:posts@postgres:5432/posts_media_test';
+assertTestInfrastructure({ databaseUrl });
 
 const prisma = new PrismaService(databaseUrl);
 

@@ -86,8 +86,18 @@ const queueProvider = (token: symbol, mediaType: MediaType) => ({
     OutboxCleanupService,
     WorkerClaimService,
     GracefulShutdownService,
-    FfprobeService,
-    FfmpegService,
+    {
+      provide: FfprobeService,
+      inject: [GracefulShutdownService],
+      useFactory: (gracefulShutdown: GracefulShutdownService) =>
+        new FfprobeService(gracefulShutdown),
+    },
+    {
+      provide: FfmpegService,
+      inject: [GracefulShutdownService],
+      useFactory: (gracefulShutdown: GracefulShutdownService) =>
+        new FfmpegService(gracefulShutdown),
+    },
     ImageProcessorService,
     AudioProcessorService,
     VideoProcessorService,

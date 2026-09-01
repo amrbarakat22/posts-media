@@ -35,7 +35,15 @@ export class VideoProcessorService {
     if (video?.width === undefined || video.height === undefined)
       throw new Error('MEDIA_STREAM_NOT_FOUND');
     const hasAudio = source.streams.some((item) => item.codec_type === 'audio');
-    const renditions = planVideoRenditions(video.width, video.height);
+    const rotation = video.side_data_list?.find(
+      (item) => item.rotation !== undefined,
+    )?.rotation;
+    const swapsDisplayAxes =
+      rotation !== undefined && Math.abs(rotation) % 180 === 90;
+    const renditions = planVideoRenditions(
+      swapsDisplayAxes ? video.height : video.width,
+      swapsDisplayAxes ? video.width : video.height,
+    );
     const outputs: VideoOutput[] = [];
     for (const rendition of renditions) {
       const outputPath = `${workspace}/video-${rendition.label}.mp4`;

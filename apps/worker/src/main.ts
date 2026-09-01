@@ -9,7 +9,12 @@ import { WorkerModule } from './worker.module';
 export async function bootstrap(
   options?: NestApplicationOptions,
 ): Promise<INestApplicationContext> {
-  return NestFactory.createApplicationContext(WorkerModule, options);
+  const application = await NestFactory.createApplicationContext(
+    WorkerModule,
+    options,
+  );
+  application.enableShutdownHooks();
+  return application;
 }
 
 if (require.main === module) {

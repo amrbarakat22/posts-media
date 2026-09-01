@@ -15,6 +15,8 @@ export class PrismaService
   extends PrismaClient
   implements OnModuleInit, OnModuleDestroy
 {
+  private readonly shutdownBarriers = new Set<Promise<void>>();
+
   public constructor(
     databaseUrl: string,
     private readonly connectOnInit = true,
@@ -27,7 +29,12 @@ export class PrismaService
   }
 
   public async onModuleDestroy(): Promise<void> {
+    await Promise.allSettled([...this.shutdownBarriers]);
     await this.$disconnect();
+  }
+
+  public registerShutdownBarrier(barrier: Promise<void>): void {
+    this.shutdownBarriers.add(barrier);
   }
 
   public withTransaction<T>(callback: TransactionCallback<T>): Promise<T> {

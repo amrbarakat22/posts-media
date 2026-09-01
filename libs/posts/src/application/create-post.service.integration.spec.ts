@@ -14,6 +14,7 @@ import {
   type StoredObject,
 } from '@posts-media/storage';
 
+import { assertTestInfrastructure } from '../../../../test/support/test-infrastructure.guard';
 import { CreatePostService } from './create-post.service';
 
 const databaseUrl =
@@ -26,6 +27,7 @@ const secretKey = process.env.MINIO_SECRET_KEY ?? 'minioadmin123';
 const originalsBucket = process.env.MINIO_ORIGINALS_BUCKET ?? 'post-originals';
 const processedBucket = process.env.MINIO_PROCESSED_BUCKET ?? 'post-processed';
 const temporaryBucket = process.env.MINIO_TEMP_BUCKET ?? 'post-temporary';
+assertTestInfrastructure({ databaseUrl, minioEndpoint: endpoint });
 
 const prisma = new PrismaService(databaseUrl);
 const idempotency = new IdempotencyService(prisma, 24, 900);

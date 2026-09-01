@@ -5,12 +5,14 @@ import { MediaType } from '@posts-media/domain';
 import { jobNameFor, mediaJobId, queueNameFor } from '@posts-media/queues';
 
 import { OutboxClaimRepository } from '../../apps/worker/src/outbox/outbox-claim.repository';
+import { assertTestInfrastructure } from '../support/test-infrastructure.guard';
 
 const databaseUrl = process.env.DATABASE_URL;
 
 if (databaseUrl === undefined || databaseUrl.length === 0) {
   throw new Error('DATABASE_URL must be set for outbox integration tests');
 }
+assertTestInfrastructure({ databaseUrl });
 
 describe('OutboxClaimRepository', () => {
   const prisma = new PrismaService(databaseUrl);

@@ -8,6 +8,13 @@ export interface ProcessingClaim {
   readonly leaseToken: string;
 }
 
+const safeProcessingErrorMessage = (message: string): string => {
+  const identifier = message.split(':', 1)[0]?.trim() ?? '';
+  return /^(?:PROCESSING|MEDIA|FFMPEG|FFPROBE)_[A-Z0-9_]+$/.test(identifier)
+    ? identifier.slice(0, 1000)
+    : 'Media processing failed.';
+};
+
 @Injectable()
 export class WorkerClaimService {
   public constructor(private readonly prisma: PrismaService) {}
@@ -142,6 +149,7 @@ export class WorkerClaimService {
   ): Promise<boolean> {
     const status = final ? ProcessingStatus.FAILED : ProcessingStatus.PENDING;
     const now = new Date();
+    const safeErrorMessage = safeProcessingErrorMessage(errorMessage);
     return this.prisma.withTransaction(async (tx) => {
       const media = await tx.media.updateMany({
         where: {
@@ -157,7 +165,7 @@ export class WorkerClaimService {
           processingLeaseExpiresAt: null,
           activeJobId: null,
           lastErrorCode: errorCode.slice(0, 64),
-          lastErrorMessage: errorMessage.slice(0, 1000),
+          lastErrorMessage: safeErrorMessage,
         },
       });
       if (media.count !== 1) return false;
@@ -166,7 +174,7 @@ export class WorkerClaimService {
         data: {
           status: final ? 'FAILED' : 'FAILED',
           errorCode: errorCode.slice(0, 64),
-          errorMessage: errorMessage.slice(0, 1000),
+          errorMessage: safeErrorMessage,
           completedAt: now,
         },
       });

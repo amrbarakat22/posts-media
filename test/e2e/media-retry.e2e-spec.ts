@@ -132,6 +132,19 @@ describe('Media retry (e2e)', () => {
     });
   };
 
+  it('returns MEDIA_NOT_FOUND when access is requested for missing media', async () => {
+    const response = await request(app.getHttpServer()).get(
+      `/api/media/${randomUUID()}/access`,
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.body).toMatchObject({
+      statusCode: 404,
+      code: 'MEDIA_NOT_FOUND',
+      message: 'The requested media does not exist.',
+    });
+  });
+
   it('transactionally resets a FAILED item and creates one generation-specific dispatch', async () => {
     const media = await failedMedia();
     const response = await request(app.getHttpServer())

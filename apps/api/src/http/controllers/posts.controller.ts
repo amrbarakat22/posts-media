@@ -36,6 +36,7 @@ import { GetPostQueryDto } from '../dto/get-post-query.dto';
 import { ListPostsQueryDto } from '../dto/list-posts-query.dto';
 import { UpdatePostDto } from '../dto/update-post.dto';
 import type { RequestWithId } from '../middleware/request-id.middleware';
+import { uuidParamPipe } from '../pipes/uuid-param.pipe';
 
 /** Any single-field multipart upload cap comfortably above the real limit (10, Part I §2.9) — the configured limit remains the actual enforcement point (see UploadModule). */
 const MULTIPART_FIELD_DECORATOR_MAX_FILES = 50;
@@ -114,7 +115,7 @@ export class PostsController {
     FilesInterceptor('media', MULTIPART_FIELD_DECORATOR_MAX_FILES),
   )
   public async addMedia(
-    @Param('postId') postId: string,
+    @Param('postId', uuidParamPipe('postId')) postId: string,
     @UploadedFiles() files: Express.Multer.File[] | undefined,
     @Headers('idempotency-key') idempotencyKey: string | undefined,
     @Req() request: Request,
@@ -158,7 +159,7 @@ export class PostsController {
 
   @Get(':postId')
   public async getById(
-    @Param('postId') postId: string,
+    @Param('postId', uuidParamPipe('postId')) postId: string,
     @Query() query: GetPostQueryDto,
   ) {
     const post = await this.posts.getById(postId, {
@@ -169,7 +170,7 @@ export class PostsController {
 
   @Patch(':postId')
   public async update(
-    @Param('postId') postId: string,
+    @Param('postId', uuidParamPipe('postId')) postId: string,
     @Body() body: UpdatePostDto,
   ) {
     const post = await this.posts.update(postId, body);
@@ -178,14 +179,18 @@ export class PostsController {
 
   @Delete(':postId')
   @HttpCode(HttpStatus.OK)
-  public async softDelete(@Param('postId') postId: string) {
+  public async softDelete(
+    @Param('postId', uuidParamPipe('postId')) postId: string,
+  ) {
     const post = await this.posts.softDelete(postId);
     return presentPost(post);
   }
 
   @Post(':postId/restore')
   @HttpCode(HttpStatus.OK)
-  public async restore(@Param('postId') postId: string) {
+  public async restore(
+    @Param('postId', uuidParamPipe('postId')) postId: string,
+  ) {
     const post = await this.posts.restore(postId);
     return presentPost(post);
   }

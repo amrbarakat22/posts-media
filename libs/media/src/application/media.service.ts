@@ -20,6 +20,7 @@ import { MediaRepository } from '../repositories/media.repository';
 import {
   presentMedia,
   type MediaResponseDto,
+  type MediaWithVariants,
 } from '../presenters/media.presenter';
 
 export interface MediaAccessResponse {
@@ -37,8 +38,28 @@ export class MediaService {
   ) {}
 
   public async get(id: string): Promise<MediaResponseDto> {
+    return presentMedia(await this.findById(id));
+  }
+
+  public async access(id: string): Promise<MediaAccessResponse> {
+    const media = await this.findById(id);
+    const original = await this.storage.presignedGet(
+      { bucket: media.originalBucket, objectKey: media.originalObjectKey },
+      900,
+    );
+    const variants: Record<string, string> = {};
+    for (const variant of media.variants) {
+      variants[variant.variantType] = await this.storage.presignedGet(
+        { bucket: variant.bucket, objectKey: variant.objectKey },
+        900,
+      );
+    }
+    return { original, variants };
+  }
+
+  private async findById(id: string): Promise<MediaWithVariants> {
     try {
-      return presentMedia(await this.repository.findById(id));
+      return await this.repository.findById(id);
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -52,22 +73,6 @@ export class MediaService {
       }
       throw error;
     }
-  }
-
-  public async access(id: string): Promise<MediaAccessResponse> {
-    const media = await this.repository.findById(id);
-    const original = await this.storage.presignedGet(
-      { bucket: media.originalBucket, objectKey: media.originalObjectKey },
-      900,
-    );
-    const variants: Record<string, string> = {};
-    for (const variant of media.variants) {
-      variants[variant.variantType] = await this.storage.presignedGet(
-        { bucket: variant.bucket, objectKey: variant.objectKey },
-        900,
-      );
-    }
-    return { original, variants };
   }
 
   public async retry(

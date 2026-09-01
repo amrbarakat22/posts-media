@@ -144,6 +144,21 @@ describe('Posts E2E', () => {
     expect(missing.body.code).toBe('POST_NOT_FOUND');
   });
 
+  it('rejects a malformed post id as a sanitized validation error', async () => {
+    const response = await request(app.getHttpServer()).get(
+      '/api/posts/not-a-uuid',
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      statusCode: 400,
+      code: 'VALIDATION_FAILED',
+      message: 'The postId path parameter must be a valid UUID.',
+    });
+    expect(response.body.requestId).toEqual(expect.any(String));
+    expect(response.body).not.toHaveProperty('stack');
+  });
+
   it('updates only title/content via PATCH', async () => {
     const created = await createPost({
       title: 'Original title',

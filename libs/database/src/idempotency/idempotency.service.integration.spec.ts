@@ -42,7 +42,7 @@ describe('IdempotencyService (integration)', () => {
 
   afterEach(async () => {
     await prisma.idempotencyRequest.deleteMany();
-    await prisma.post.deleteMany();
+    await prisma.post.deleteMany({ where: { title: 'x', content: 'y' } });
   });
 
   it('acquires a fresh key and finalizes it as FINALIZED with the action outcome', async () => {

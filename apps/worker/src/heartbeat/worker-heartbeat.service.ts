@@ -17,11 +17,17 @@ import {
 
 import { MediaQueueConsumersService } from '../consumers/media-queue-consumers.service';
 
+const DEPENDENCY_PROBE_TIMEOUT_MS = 3_000;
+
 @Injectable()
 export class WorkerHeartbeatService implements OnModuleInit, OnModuleDestroy {
   private readonly id = randomUUID();
   private timer: NodeJS.Timeout | undefined;
   private started = false;
+  private stopping = false;
+  private activeBeat: Promise<void> | undefined;
+  private redisProbe: Promise<boolean> | undefined;
+  private storageProbe: Promise<boolean> | undefined;
 
   public constructor(
     private readonly prisma: PrismaService,
@@ -42,8 +48,10 @@ export class WorkerHeartbeatService implements OnModuleInit, OnModuleDestroy {
   }
 
   public async onModuleDestroy(): Promise<void> {
+    this.stopping = true;
     if (this.timer !== undefined) clearInterval(this.timer);
     if (!this.started) return;
+    await this.activeBeat?.catch(() => undefined);
     await this.prisma.workerInstance
       .updateMany({
         where: { id: this.id },
@@ -53,17 +61,25 @@ export class WorkerHeartbeatService implements OnModuleInit, OnModuleDestroy {
   }
 
   public async beat(): Promise<void> {
+    if (this.stopping) return;
+    if (this.activeBeat !== undefined) return this.activeBeat;
+    const run = this.performBeat();
+    const tracked = run.finally(() => {
+      if (this.activeBeat === tracked) this.activeBeat = undefined;
+    });
+    this.activeBeat = tracked;
+    return tracked;
+  }
+
+  private async performBeat(): Promise<void> {
     const [redisConnected, storageConnected] = await Promise.all([
-      this.queue.ping().catch(() => false),
-      this.storage
-        .exists({
+      this.probeDependency('redis', () => this.queue.ping()),
+      this.probeDependency('storage', () =>
+        this.storage.exists({
           bucket: this.configuration.values.storage.originalsBucket,
           objectKey: '.healthcheck',
-        })
-        .then(
-          () => true,
-          () => false,
-        ),
+        }),
+      ),
     ]);
     const consumersActive = this.consumers.consumersActive;
     const status =
@@ -94,5 +110,42 @@ export class WorkerHeartbeatService implements OnModuleInit, OnModuleDestroy {
         shutdownAt: null,
       },
     });
+  }
+
+  private async probeDependency(
+    dependency: 'redis' | 'storage',
+    startProbe: () => Promise<unknown>,
+  ): Promise<boolean> {
+    const current =
+      dependency === 'redis' ? this.redisProbe : this.storageProbe;
+    const probe =
+      current ??
+      Promise.resolve()
+        .then(startProbe)
+        .then(
+          () => true,
+          () => false,
+        )
+        .finally(() => {
+          if (dependency === 'redis' && this.redisProbe === probe) {
+            this.redisProbe = undefined;
+          }
+          if (dependency === 'storage' && this.storageProbe === probe) {
+            this.storageProbe = undefined;
+          }
+        });
+    if (current === undefined) {
+      if (dependency === 'redis') this.redisProbe = probe;
+      else this.storageProbe = probe;
+    }
+    let timeout: NodeJS.Timeout | undefined;
+    const deadline = new Promise<boolean>((resolve) => {
+      timeout = setTimeout(() => resolve(false), DEPENDENCY_PROBE_TIMEOUT_MS);
+    });
+    try {
+      return await Promise.race([probe, deadline]);
+    } finally {
+      if (timeout !== undefined) clearTimeout(timeout);
+    }
   }
 }

@@ -26,7 +26,10 @@ export class BullMediaQueue implements MediaQueue, OnModuleDestroy {
   }
 
   public async ping(): Promise<boolean> {
-    await this.queue.waitUntilReady();
+    const client = await this.queue.client;
+    // `waitUntilReady()` only reflects the connection's initial startup. INFO
+    // is an actual round-trip and therefore detects later disconnects too.
+    await client.info();
     return true;
   }
 

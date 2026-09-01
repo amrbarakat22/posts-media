@@ -18,13 +18,32 @@ Plan: `docs/superpowers/plans/2026-08-30-posts-media-platform.md`
 | 12 | Transactional outbox dispatcher + BullMQ topology | DONE (including real Redis outage/recovery) | `5057b2e`, `7dcdf34` |
 | 13 | Worker processing claim, lease renewal, attempts, workspace | DONE (focused integration verified) | `0913917`, `9636bdf` |
 | 14 | Image processing and variant publication | DONE (real Compose smoke verified) | `94f3acd`, `0ab163c`, `941ec3e` |
-| 15 | Audio processing | PARTIAL (real WAV-to-MP3 + Compose smoke; broader source matrix pending) | `da85e95`, `e9259a9`, `941ec3e` |
-| 16 | Video rendition planning, transcoding, thumbnail | PARTIAL (real 360p Compose smoke; full resolution/orientation matrix pending) | `da85e95`, `e9259a9`, `941ec3e` |
-| 17 | Media read/status/access and manual retry | PARTIAL (read/access smoke verified; complete retry E2E matrix pending) | `40f0616` |
+| 15 | Audio processing | DONE (real MP3/WAV/M4A/FLAC/OGG matrix, channel normalization, metadata and Compose smoke) | `1fd60f5` |
+| 16 | Video rendition planning, transcoding, thumbnail | DONE (real 1080/720/480/sub-360/portrait/no-audio/FPS matrix and Compose smoke) | `1fd60f5` |
+| 17 | Media read/status/access and manual retry | DONE (real retry generation, idempotency replay, concurrency and worker completion E2E) | `1fd60f5` |
 | 18 | Worker heartbeat, API health, diagnostics | DONE | `6f99423` |
 | 19 | Swagger and static testing UI | DONE | `2481280`, `0b32b48` |
-| 20 | Full failure-recovery and idempotency test matrix | IN PROGRESS (Redis recovery and canonical suites verified; remaining injected failures pending) | - |
-| 21 | README, smoke test, final verification | IN PROGRESS (clean Compose + mixed smoke pass; final matrix/audit pending) | `94f5b50` |
+| 20 | Full failure-recovery and idempotency test matrix | DONE (real Redis/BullMQ recovery, outbox finalization replay, duplicate/stale delivery, interruption, MinIO/DB/lease compensation, isolated destructive suites) | `1fd60f5` |
+| 21 | README, smoke test, final verification | DONE (clean production-style Compose, 279/105/32/20 suites, mixed-media smoke, Swagger/diagnostics/security/consistency audit) | `1fd60f5` |
+
+## Final evidence reconciliation (2026-09-01)
+
+- Static gates: Prisma validate/generate, API and worker builds, lint, and
+  formatting all pass in the pinned Node 24 container.
+- Fresh automated counts: 279 unit, 105 integration, 32 HTTP E2E, and 20
+  worker tests; all suites pass without skips.
+- Clean `docker compose down -v --remove-orphans` followed by
+  `docker compose up --build -d` produced healthy PostgreSQL, Redis, MinIO,
+  API, and worker services; migrations and bucket initialization completed.
+- `npm run smoke` was run from a Node 24 production worker image against the
+  host-published API and passed create/idempotent replay, mixed image/audio/video
+  processing, variant access, filter, delete, and restore checks.
+- Runtime images load Sharp 0.35.4/libvips 8.18.6 and Prisma Client while
+  omitting the Prisma CLI/config chain; runtime audit has no high/critical
+  findings (three known moderate MinIO/query-string advisories remain).
+- Database consistency checks found no completed media missing variants, no
+  duplicate variant keys or media sort orders, no stale-generation attempts,
+  and no pending/retry/dead dispatches after smoke.
 
 ## Reconciliation note (Task 8)
 

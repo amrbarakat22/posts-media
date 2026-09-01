@@ -33,6 +33,15 @@ Queues and default concurrency:
 
 The `balanced-v1` profile generates WebP image/thumbnail output, 192 kbps MP3 audio, and no-upscale H.264/AAC MP4 ladders (360p/720p/1080p as applicable) plus JPEG thumbnails. Buckets stay private; `/api/media/:id/access` creates fresh 900-second presigned URLs.
 
+The default upload limits are 10 files/request, 500 MB total, 10 MB/image,
+50 MB/audio, 250 MB/video, 40 million image pixels, 7,200 seconds/audio,
+1,800 seconds/video, and 7,680x4,320 maximum video dimensions. Audio accepts
+MP3, WAV, M4A/AAC, FLAC, and OGG inputs; video output is capped at 30 FPS and
+uses yuv420p-compatible H.264/AAC MP4. Automatic retries use the configured
+BullMQ attempt count; exhausted work is `FAILED` with sanitized diagnostics.
+Processed objects are immutable by generation/attempt so a stale worker cannot
+remove a newer worker's publication.
+
 Mutating upload/retry routes require `Idempotency-Key`. Reusing a key with the same request replays its stored result; using it with different input is rejected. Manual retry is allowed only from `FAILED` and increments the processing generation. Automatic BullMQ retries retain the generation.
 
 ## API
@@ -69,21 +78,29 @@ Troubleshooting: inspect `docker compose logs api worker`, then `/api/system/dia
 
 ## Assignment Requirement Coverage
 
-| Requirement               | Implementation                                                              |
-| ------------------------- | --------------------------------------------------------------------------- |
-| 1. Posts CRUD             | Posts controller/service/repository, delete and restore                     |
-| 2. Upload validation      | MIME, extension, size, signature, Sharp/FFprobe inspection                  |
-| 3. Organized storage      | Three private MinIO buckets and deterministic object keys                   |
-| 4. Database records       | Prisma Post, Media, MediaVariant, attempt/outbox models                     |
-| 5. Image processing       | Sharp auto-orient, resize/compress, optimized WebP and thumbnail            |
-| 6. Audio processing       | FFprobe metadata/duration and normalized MP3                                |
-| 7. Video processing       | FFprobe, H.264/AAC renditions and JPEG thumbnail                            |
-| 8. Redis + BullMQ         | Three queues consumed by the worker                                         |
-| 9. Processing states      | PENDING, PROCESSING, COMPLETED, FAILED                                      |
-| 10. Retry                 | BullMQ attempts plus generation-incrementing manual retry                   |
-| 11. Status endpoint       | `/api/media/:mediaId/status`                                                |
-| 12. Idempotent processing | Deterministic jobs, generation and DB lease guards                          |
-| 13. Pagination/filtering  | `GET /api/posts` typed query contract                                       |
-| 14. Soft delete           | Delete, include-deleted reads, restore                                      |
-| 15. Swagger               | `/api/docs` and `/api/docs-json`                                            |
-| 16. Tests                 | Unit, PostgreSQL/Redis/MinIO integration, HTTP E2E, worker suites and smoke |
+Each row names the implementation, automated evidence, smoke evidence, and
+current status. Commands below were run against the Node 24 test Compose stack;
+the clean production-style stack and mixed-media smoke were also rerun.
+
+| Requirement                                      | Implementation                                                         | Automated test evidence                                                        | Smoke evidence                                   | Status   |
+| ------------------------------------------------ | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------ | -------- |
+| Posts CRUD                                       | Posts controller/service/repository, delete/restore                    | `test/e2e/posts.e2e-spec.ts`                                                   | `npm run smoke` CRUD flow                        | COMPLETE |
+| MIME validation                                  | `MediaValidationService` MIME policy                                   | `libs/media/src/validation/mime-policy.spec.ts`                                | invalid upload rejected                          | COMPLETE |
+| Extension validation                             | Extension policy                                                       | `libs/media/src/validation/extension-policy.spec.ts`                           | spoofed extension rejected                       | COMPLETE |
+| File-size validation                             | Per-type and total limits                                              | `media-validation.service.integration.spec.ts`                                 | invalid create rejected                          | COMPLETE |
+| File-signature validation                        | Magic-byte detector                                                    | `signature-detector.service.spec.ts`, media validation integration             | corrupt fixture rejected                         | COMPLETE |
+| Original media storage                           | Private originals bucket and immutable keys                            | `minio-object-storage.integration.spec.ts`, create-post integration            | mixed upload originals accessed by presigned URL | COMPLETE |
+| Processed media storage                          | Private processed/temporary buckets and compensation                   | `variant-publication.service.spec.ts`, worker recovery                         | all mixed-media variants accessible              | COMPLETE |
+| Post/Media database records                      | Prisma schema, repositories, outbox/attempt relations                  | `database.integration.spec.ts`                                                 | smoke post/media/status checks                   | COMPLETE |
+| Image resize/compression/thumbnail               | Sharp image processor                                                  | `image-processor.service.spec.ts`, create-post integration                     | mixed image reaches COMPLETED with variants      | COMPLETE |
+| Audio duration/metadata/MP3                      | FFprobe + normalized 192 kbps MP3                                      | `audio-processor.integration.spec.ts` (MP3/WAV/M4A/FLAC/OGG, channels)         | WAV mixed-media upload completes                 | COMPLETE |
+| Video compression/metadata/thumbnail/resolutions | FFprobe + H.264/AAC no-upscale ladder                                  | `video-processor.integration.spec.ts` (1080/720/480/sub-360/portrait/no-audio) | MP4 mixed-media upload completes                 | COMPLETE |
+| Redis + BullMQ processing                        | Transactional outbox and three queues                                  | `queue-publication.integration.spec.ts`, worker recovery                       | clean Compose worker/Redis healthy               | COMPLETE |
+| Processing states                                | PENDING/PROCESSING/COMPLETED/FAILED transitions                        | `worker-recovery.integration.spec.ts`                                          | smoke polls to COMPLETED                         | COMPLETE |
+| Failed-job retry                                 | Automatic attempts plus manual generation retry                        | `worker-recovery.integration.spec.ts`, `media-retry.e2e-spec.ts`               | retry path exercised in real queue               | COMPLETE |
+| Media status endpoint                            | `GET /api/media/:mediaId/status`                                       | `media-retry.e2e-spec.ts`                                                      | smoke polling                                    | COMPLETE |
+| Idempotent processing                            | Deterministic job IDs, leases, generation/attempt keys                 | queue publication, worker recovery, retry E2E                                  | replayed create request remains one resource     | COMPLETE |
+| Pagination/filtering                             | Typed `GET /api/posts` query contract                                  | `posts.e2e-spec.ts`                                                            | smoke filtered list                              | COMPLETE |
+| Soft delete                                      | Delete, include-deleted reads, restore                                 | `posts.e2e-spec.ts`                                                            | smoke delete/restore                             | COMPLETE |
+| Swagger documentation                            | `/api/docs` and `/api/docs-json`                                       | `apps/api/src/main.spec.ts`                                                    | clean-stack docs JSON exposes 11 paths           | COMPLETE |
+| Unit/integration/E2E tests                       | Jest unit, PostgreSQL/Redis/MinIO integration, HTTP E2E, worker suites | 279 unit, 105 integration, 32 E2E, 20 worker                                   | `npm run smoke`                                  | COMPLETE |

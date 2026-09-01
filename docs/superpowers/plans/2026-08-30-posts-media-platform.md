@@ -2603,21 +2603,21 @@ git commit -m "feat: add private minio object storage"
 **Interfaces:**
 - Produces confidence that the architecture survives repeated requests, duplicate jobs, and temporary infrastructure loss.
 
-- [ ] **Step 1: Add response-loss replay test: commit succeeds, simulated client failure, repeat same idempotency request, assert one resource and replayed response.**
+- [x] **Step 1: Add response-loss replay test: commit succeeds, simulated client failure, repeat same idempotency request, assert one resource and replayed response.**
 
-- [ ] **Step 2: Add two concurrent same-key requests; assert one execution and one `IDEMPOTENCY_REQUEST_IN_PROGRESS`/replay outcome depending timing.**
+- [x] **Step 2: Add two concurrent same-key requests; assert one execution and one `IDEMPOTENCY_REQUEST_IN_PROGRESS`/replay outcome depending timing.**
 
-- [ ] **Step 3: Add outbox publish-after-Redis-recovery test.**
+- [x] **Step 3: Add outbox publish-after-Redis-recovery test.**
 
-- [ ] **Step 4: Add publish-success/database-finalize-failure simulation and prove deterministic job publication plus worker claim remains safe.**
+- [x] **Step 4: Add publish-success/database-finalize-failure simulation and prove deterministic job publication plus worker claim remains safe.**
 
-- [ ] **Step 5: Add duplicate worker delivery test and stale-generation test.**
+- [x] **Step 5: Add duplicate worker delivery test and stale-generation test.**
 
-- [ ] **Step 6: Add processing timeout and interrupted child process test.**
+- [x] **Step 6: Add processing timeout and interrupted child process test.**
 
-- [ ] **Step 7: Add MinIO failure before and during variant publication tests; assert no media is marked COMPLETED with missing required variants.**
+- [x] **Step 7: Add MinIO failure before and during variant publication tests; assert no media is marked COMPLETED with missing required variants.**
 
-- [ ] **Step 8: Run entire automated suite repeatedly to detect race/flakiness.**
+- [x] **Step 8: Run entire automated suite repeatedly to detect race/flakiness.**
 
 ```bash
 npm run test:unit
@@ -2626,7 +2626,7 @@ npm run test:e2e
 npm run test:worker
 ```
 
-- [ ] **Step 9: Commit.**
+- [x] **Step 9: Commit.**
 
 ### Task 21: README, Smoke Test, and Final Verification
 
@@ -2636,13 +2636,13 @@ npm run test:worker
 **Interfaces:**
 - Produces a reproducible submission a reviewer can run from a clean clone.
 
-- [ ] **Step 1: Document architecture, prerequisites, environment setup, Docker Compose startup, migration flow, endpoints, UI, Swagger, MinIO console, processing profile, queues, idempotency, outbox, troubleshooting, and test commands.**
+- [x] **Step 1: Document architecture, prerequisites, environment setup, Docker Compose startup, migration flow, endpoints, UI, Swagger, MinIO console, processing profile, queues, idempotency, outbox, troubleshooting, and test commands.**
 
-- [ ] **Step 2: Implement `create-test-media.mjs` to generate tiny valid fixtures using Sharp and FFmpeg plus controlled invalid signature/corruption fixtures.**
+- [x] **Step 2: Implement `create-test-media.mjs` to generate tiny valid fixtures using Sharp and FFmpeg plus controlled invalid signature/corruption fixtures.**
 
-- [ ] **Step 3: Implement `smoke-test.mjs` to create a post, upload tiny mixed media, poll each to terminal state, verify variants, exercise list/filter, soft-delete/restore, and repeat one idempotent request. Exit nonzero on any mismatch.**
+- [x] **Step 3: Implement `smoke-test.mjs` to create a post, upload tiny mixed media, poll each to terminal state, verify variants, exercise list/filter, soft-delete/restore, and repeat one idempotent request. Exit nonzero on any mismatch.**
 
-- [ ] **Step 4: Run static verification.**
+- [x] **Step 4: Run static verification.**
 
 ```bash
 npm ci
@@ -2655,7 +2655,7 @@ npm run build
 
 Expected: all exit 0.
 
-- [ ] **Step 5: Run clean infrastructure verification.**
+- [x] **Step 5: Run clean infrastructure verification.**
 
 ```bash
 docker compose down -v --remove-orphans
@@ -2665,7 +2665,7 @@ docker compose ps
 
 Expected: required services become healthy/running and one-shot init/migrate services complete successfully.
 
-- [ ] **Step 6: Run all tests and smoke test.**
+- [x] **Step 6: Run all tests and smoke test.**
 
 ```bash
 npm run test:unit
@@ -2677,7 +2677,7 @@ npm run smoke
 
 Expected: all pass.
 
-- [ ] **Step 7: Manually inspect:**
+- [x] **Step 7: Manually inspect:**
 
 ```text
 http://127.0.0.1:3000/
@@ -2687,9 +2687,9 @@ http://127.0.0.1:9001/
 
 Verify the dashboard can demonstrate every assignment feature.
 
-- [ ] **Step 8: Run a final source-requirement audit against the 16 source assignment requirements in Section 1. Record the mapping in README under `Assignment Requirement Coverage`.**
+- [x] **Step 8: Run a final source-requirement audit against the 16 source assignment requirements in Section 1. Record the mapping in README under `Assignment Requirement Coverage`.**
 
-- [ ] **Step 9: Commit final documentation and verification tooling.**
+- [x] **Step 9: Commit final documentation and verification tooling.**
 
 ```bash
 git add .
